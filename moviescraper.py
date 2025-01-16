@@ -83,7 +83,7 @@ connection.close()
 @retry((ConnectionError, Timeout, TimeoutException), tries=10, delay=2, backoff=2)
 def scraping(start_page, end_page, imagesrc, downloadlinks, allongoing, lock):
     chrome_options = webdriver.ChromeOptions()
-    chrome_options.add_argument("--headless") #comment this to run in headfull mode
+    # chrome_options.add_argument("--headless") #comment this to run in headfull mode
     user_agent = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.92 Mobile Safari/537.36"
     chrome_options.add_argument(f"user-agent={user_agent}")
     referer = MOVIEMOD_BASE_URL
@@ -92,6 +92,12 @@ def scraping(start_page, end_page, imagesrc, downloadlinks, allongoing, lock):
     chrome_options.add_argument(f"referer={referer}")
     chrome_options.add_argument("--log-level=3")
     chrome_options.add_argument("--disable-gpu") 
+    chrome_options.add_argument('--disable-infobars')
+    chrome_options.add_argument('--disable-extensions')
+    chrome_options.add_argument('--disable-dev-shm-usage')
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.add_argument("--enable-javascript")
+    chrome_options.add_argument('--disable-features=VizDisplayCompositor')
     chrome_options.add_argument("--enable-unsafe-swiftshader")
     driver = webdriver.Chrome(options=chrome_options)
     # driver.implicitly_wait(20)
@@ -298,7 +304,8 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
                                 driver.get(seriesdownloadlink[i])
                             except:
                                 print(f"error occured while getting seriesdlink :{seriesdownloadlink[i]}")
-                            epidl = driver.find_elements(By.CSS_SELECTOR, 'h3[style="text-align: center;"] a[href]')
+                            # epidl = driver.find_elements(By.CSS_SELECTOR, 'h3[style="text-align: center;"] a[href]')
+                            epidl = driver.find_elements(By.CSS_SELECTOR, 'a.darkmysite_style_txt_border.darkmysite_style_link.darkmysite_processed')
                             episodedownloadlink = []
 
                             for epi in epidl:
@@ -1247,7 +1254,7 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
 
 
 chrome_options = webdriver.ChromeOptions()
-chrome_options.add_argument("--headless") #comment this to run in headfull mode
+# chrome_options.add_argument("--headless") #comment this to run in headfull mode
 user_agent = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.92 Mobile Safari/537.36"
 chrome_options.add_argument(f"user-agent={user_agent}")
 referer = MOVIEMOD_BASE_URL
