@@ -116,7 +116,7 @@ def scraping(start_page, end_page, imagesrc, downloadlinks, allongoing, lock):
 
             local_imagesrc.append(mpsrc)
 
-        print(counterchecker)
+        # print(counterchecker)
         ml = driver.find_elements(By.CSS_SELECTOR, 'h2.title.front-view-title')
         counter = 0
         for link in ml:
@@ -303,9 +303,9 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
 
                             for epi in epidl:
                                 epid = epi.get_attribute('href')
-                                if epid.startswith('https://oddfirm.com/?'):
+                                if epid.startswith('https://tech.unblockedgames.world/?'):
                                     episodedownloadlink.append(epid)
-                            print(len(episodedownloadlink))
+                            print(f"No of episode download found:{len(episodedownloadlink)}")
                             if ongoingseries:
                                 allscrapedepisodes.extend(episodedownloadlink)
 
@@ -440,7 +440,7 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
                                         continue
 
                                     elif driver.current_url.startswith('https://driveseed.org/file/'):
-                                        print(c_url)
+                                        print(f"final url: {c_url}")
                                         allepidirectlinks.append(c_url)
                                         resolution = None
                                         unbrokenlink = True
@@ -451,7 +451,7 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
                                             driver.refresh()
                                             name_li_element = driver.find_element(By.CSS_SELECTOR, "li.list-group-item")
                                             name_li_text = name_li_element.text.lower()
-                                            print(name_li_text)
+                                            print(f"movie info on final link:{name_li_text}")
                                         if '720p 10bit' in name_li_text or '720p.10bit' in name_li_text or '720p.bluray.10bit' in name_li_text or '720.10bit' in name_li_text:
                                             resolution = '720pbit'
 
@@ -682,12 +682,12 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
                     else:
                         pass
                     if unbrokenlink:
-                        print(movie_descrp)
+                        print(f"broken link description:{movie_descrp}")
                         # print(imagesourceurl)
 
                         allsdirectlinks = '\n'.join(allepidirectlinks)
                         if allsdirectlinks:
-                            print(f"all episode dirextlinks : {allsdirectlinks}")
+                            print(f"all episode directlinks : {allsdirectlinks}")
                         final_captions = ''.join(captions)
                         print(final_captions)
                         db_params = {
@@ -760,7 +760,7 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
                                     print(f"could find zipfile links: {downloadlinks}")
                                     continue
                             fdsl = fds.get_attribute('href')
-                            print(fdsl)
+                            print(f"zip file shortlink:{fdsl}")
                             try:
                                 driver.get(fdsl)
                             except Exception as e:
@@ -832,7 +832,7 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
                                 if c_url == 'https://driveseed.org/404':
                                     continue
                                 elif c_url.startswith('https://driveseed.org/file/'):
-                                    print(c_url)
+                                    print(f"final zip link : {c_url}")
                                     allzipdirectlinks.append(c_url)
                                     seasoncounter = None
                                     unbrokenlink = True
@@ -843,7 +843,7 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
                                         driver.refresh()
                                         name_li_element = driver.find_element(By.CSS_SELECTOR, "li.list-group-item")
                                         name_li_text = name_li_element.text.lower()
-                                        print(name_li_text)
+                                        print(f"series info in final zip link:{name_li_text}")
                                     if '720p 10bit' in name_li_text or '720p.10bit' in name_li_text or '720p.bluray.10bit' in name_li_text or '720.10bit' in name_li_text:
                                         resolution = '720pbit'
 
@@ -869,7 +869,7 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
                                         pass
                                     destination_url = c_url
                                     scopy=destination_url
-                                    print(scopy)
+                                    # print(scopy)
                                     if resolution == '480p':
                                         shortlink480p = scopy
                                     elif resolution == '720p':
@@ -1034,7 +1034,7 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
                                 continue
 
                             else:
-                                print(buttonlinks[i])
+                                print(f"download button link:{buttonlinks[i]}")
                                 try:
                                     driver.get(buttonlinks[i])
                                 except:
@@ -1059,11 +1059,11 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
                             try:
                                 gddlh = gddl.get_attribute('href')
                             except:
-                                print(f'++++++++gddl not present checking the website manually : {buttonlinks[i]}')
+                                print(f'gddl not present checking the website manually : {buttonlinks[i]}')
                                 continue
-                            print(cdb)
+                            # print(f"current download {cdb}")
 
-                            print(gddlh)
+                            # print(f"download link: {gddlh}")
 
                             try:
                                 driver.get(gddlh)
@@ -1130,7 +1130,7 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
                                     continue
 
                                 elif c_url.startswith('https://driveseed.org/file/'):
-                                    print(c_url)
+                                    print(f"final direct link: {c_url}")
                                     allmoviedirectlinks.append(c_url)
                                     unbrokenlink = True
                                     try:
@@ -1140,7 +1140,7 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
                                         driver.refresh()
                                         name_li_element = driver.find_element(By.CSS_SELECTOR, "li.list-group-item")
                                         name_li_text = name_li_element.text.lower()
-                                        print(name_li_text)
+                                        print(f"series info on final  link:{name_li_text}")
                                     if '720p 10bit' in name_li_text or '720p.10bit' in name_li_text or '720p.bluray.10bit' in name_li_text or '720.10bit' in name_li_text:
                                         resolution = '720pbit'
 
@@ -1167,7 +1167,7 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
                                     try:
                                         destination_url = c_url
                                         scopy = destination_url
-                                        print(scopy)
+                                        # print(scopy)
 
                                         if resolution == '480p':
                                             shortlink480p = scopy
