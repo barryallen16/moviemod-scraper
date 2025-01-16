@@ -83,7 +83,7 @@ connection.close()
 @retry((ConnectionError, Timeout, TimeoutException), tries=10, delay=2, backoff=2)
 def scraping(start_page, end_page, imagesrc, downloadlinks, allongoing, lock):
     chrome_options = webdriver.ChromeOptions()
-    # chrome_options.add_argument("--headless") #comment this to run in headfull mode
+    chrome_options.add_argument("--headless") #comment this to run in headfull mode
     user_agent = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.92 Mobile Safari/537.36"
     chrome_options.add_argument(f"user-agent={user_agent}")
     referer = MOVIEMOD_BASE_URL
@@ -1254,7 +1254,7 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
 
 
 chrome_options = webdriver.ChromeOptions()
-# chrome_options.add_argument("--headless") #comment this to run in headfull mode
+chrome_options.add_argument("--headless") #comment this to run in headfull mode
 user_agent = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.92 Mobile Safari/537.36"
 chrome_options.add_argument(f"user-agent={user_agent}")
 referer = MOVIEMOD_BASE_URL
