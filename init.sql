@@ -1,16 +1,11 @@
-
-long_init_query = """CREATE DATABASE moviemod;
-
-USE moviemod;
-
-CREATE TABLE movies (
+CREATE TABLE IF NOT EXISTS movies (
     id INT AUTO_INCREMENT PRIMARY KEY,
     image_url TEXT,
     caption TEXT,
     org_links TEXT
 );
 
-CREATE TABLE series (
+CREATE TABLE IF NOT EXISTS series (
     id INT AUTO_INCREMENT PRIMARY KEY,
     image_url TEXT,
     movie_descrp TEXT,
@@ -18,15 +13,15 @@ CREATE TABLE series (
     org_links TEXT
 );
 
-CREATE TABLE ongoing (
+CREATE TABLE IF NOT EXISTS ongoing (
     id INT AUTO_INCREMENT PRIMARY KEY,
     serieslink TEXT,
     episodelinks TEXT
 );
 
-CREATE TABLE zip (
+CREATE TABLE IF NOT EXISTS zip (
     id INT AUTO_INCREMENT PRIMARY KEY,
     image_url TEXT,
     links TEXT,
     org_links TEXT
-);"""
+);
