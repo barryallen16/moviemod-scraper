@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  scraper:
+    build: .
+    env_file:
+      - .env
+    depends_on:
+      db:
+         condition: service_healthy
+    
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: supersecretpassword
+      MYSQL_DATABASE: moviesmod
+      MYSQL_USER: myuser
+      MYSQL_PASSWORD: mypassword
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./init.sql:/docker-entrypoint-intidb.d/init.sql
+      - mysqldata:/var/lib/mysql
+
+volumes:
+  mysqldata:
