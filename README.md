@@ -116,21 +116,18 @@ https://github.com/user-attachments/assets/8ab58885-8724-4059-9793-96fea4f3d916
 - **ChromeDriver**:
   - Ensure ChromeDriver is installed and added to your system's PATH.
 ---
-## Cloud setup 
+## Selenium setup in Cloud  
 
 ```bash
-sudo apt update
-wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-sudo dpkg -i google-chrome-stable_current_amd64.deb
-sudo apt install -y -f
-wget https://storage.googleapis.com/chrome-for-testing-public/149.0.7827.155/linux64/chromedriver-linux64.zip
-unzip chromedriver-linux64.zip
-sudo mv  chromedriver-linux64/chromedriver /usr/local/bin/
-google-chrome --version
-chromedriver --version
-sudo apt install python3-pip
-sudo apt install git
-pip install selenium
+apt update \
+&& apt install -y wget unzip \
+&& wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
+&& apt-get install -y -f ./google-chrome-stable_current_amd64.deb \
+&& wget https://storage.googleapis.com/chrome-for-testing-public/149.0.7827.155/linux64/chromedriver-linux64.zip \
+&& unzip chromedriver-linux64.zip \
+&&  mv  chromedriver-linux64/chromedriver /usr/local/bin/ \
+&&  google-chrome --version \
+&& chromedriver --version \ 
 ```
 
 ---
