@@ -1,2 +1,11 @@
 __pycache__
+*.pyc
 .venv
+.git
+.env
+.pytest_cache/
+.ruff_cache/
+tests/
+error-*.png
+docker-compose*.yaml*
+README.md

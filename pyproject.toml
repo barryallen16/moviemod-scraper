@@ -1,0 +1,38 @@
+[project]
+name = "moviemod-scraper"
+version = "1.0.0"
+description = "Selenium-based scraper for MoviesMod with multiprocessing, MySQL, and Telegram notifications"
+requires-python = ">=3.10"
+dependencies = [
+    "selenium>=4.27",
+    "mysql-connector-python>=9.1",
+    "python-telegram-bot>=21.9",
+    "requests>=2.32",
+    "retry>=0.9",
+    "python-dotenv>=1.2",
+    "beautifulsoup4>=4.15",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.4",
+    "pytest>=8.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
+ignore = ["E501"]  # line length handled separately
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.8",
+]
