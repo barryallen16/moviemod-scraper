@@ -5,22 +5,23 @@ services:
       - .env
     depends_on:
       db:
-        condition: service_healthy  
+        condition: service_healthy
     shm_size: '2gb'
 
   db:
     image: mysql:8.0
+    restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: supersecretpassword
-      MYSQL_DATABASE: test_db
-      MYSQL_USER: myuser
-      MYSQL_PASSWORD: mypassword
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-supersecretpassword}
+      MYSQL_DATABASE: ${DB_NAME:-moviemod}
+      MYSQL_USER: ${DB_USER:-myuser}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-mypassword}
     ports:
       - "3306:3306"
     volumes:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
       - mysqldata:/var/lib/mysql
-    healthcheck: 
+    healthcheck:
       test: ["CMD-SHELL", "mysql -h localhost -u root -p$$MYSQL_ROOT_PASSWORD -e 'SELECT 1'"]
       interval: 5s
       timeout: 5s

@@ -5,8 +5,8 @@ ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
 # Install dependencies, Google Chrome, and ChromeDriver in a single RUN block
-RUN apt update \
-    && apt install -y wget unzip \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends wget unzip \
     && wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
     && apt-get install -y -f ./google-chrome-stable_current_amd64.deb \
     && wget https://storage.googleapis.com/chrome-for-testing-public/149.0.7827.155/linux64/chromedriver-linux64.zip \

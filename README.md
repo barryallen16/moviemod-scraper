@@ -23,11 +23,32 @@ https://github.com/user-attachments/assets/8ab58885-8724-4059-9793-96fea4f3d916
 
 ---
 
+## Project Structure
+
+```plaintext
+moviemod-scraper/
+├── src/
+│   ├── helpers.py   # resolution + season parsing (pure functions)
+│   ├── db.py        # MySQL connection + insert helpers
+│   └── notify.py    # Telegram notifications
+├── tests/
+│   └── test_helpers.py
+├── moviescraper.py  # scraping orchestration (Selenium + multiprocessing)
+├── getCurrentDomain.py
+├── init.sql         # table schema (database itself comes from MYSQL_DATABASE / DB_NAME)
+├── pyproject.toml
+├── Dockerfile
+└── docker-compose.yaml
+```
+
+---
+
 ## Prerequisites
 
-- Python 3.x
-- MySQL Server
-- ChromeDriver (for Selenium)
+- Python 3.10+
+- [uv](https://docs.astral.sh/uv/) for deps and runs
+- MySQL Server (or Docker)
+- ChromeDriver on PATH (local runs only; the Docker image installs Chrome + ChromeDriver)
 
 ---
 
@@ -40,66 +61,44 @@ https://github.com/user-attachments/assets/8ab58885-8724-4059-9793-96fea4f3d916
    ```
 
 2. **Install Dependencies**:
-   - Install the required Python libraries using `requirements.txt`:
-     ```bash
-     pip install -r requirements.txt
-     ```
+   ```bash
+   uv sync
+   ```
 
 3. **Set Up Environment Variables**:
-   - Create a `.env` file and add the following:
-     ```plaintext
-     TELEGRAM_BOT_TOKEN=your-telegram-bot-token
-     TELEGRAM_GROUP_CHAT_ID=your-telegram-group-chat-id
-     DB_HOST=your-database-host
-     DB_USER=your-database-username
-     DB_PASSWORD=your-database-password
-     DB_NAME=your-database-name
-     NUM_PROCESSES=2
-     START_PAGE=1
-     END_PAGE=5
-     MOVIEMOD_BASE_URL=https://moviesmod.red/
+   - Copy `.env.example` to `.env` and fill in values:
+     ```bash
+     cp .env.example .env
      ```
+   - Required keys: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_GROUP_CHAT_ID`, `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `NUM_PROCESSES`, `START_PAGE`, `END_PAGE`, `website_type` (`hollywood` or `bollywood`).
+   - The base URL is resolved at runtime via `getCurrentDomain.py`, so there is no `MOVIEMOD_BASE_URL` key.
+   - Under Docker Compose, set `DB_HOST=db` so the scraper reaches the `db` service.
 
 4. **Set Up MySQL Database**:
-   - Create the required tables using the provided SQL schema:
-     ```sql
-     CREATE DATABASE moviemod;
-
-     USE moviemod;
-
-     CREATE TABLE movies (
-         id INT AUTO_INCREMENT PRIMARY KEY,
-         image_url TEXT,
-         caption TEXT,
-         org_links TEXT
-     );
-
-     CREATE TABLE series (
-         id INT AUTO_INCREMENT PRIMARY KEY,
-         image_url TEXT,
-         movie_descrp TEXT,
-         links TEXT,
-         org_links TEXT
-     );
-
-     CREATE TABLE ongoing (
-         id INT AUTO_INCREMENT PRIMARY KEY,
-         serieslink TEXT,
-         episodelinks TEXT
-     );
-
-     CREATE TABLE zip (
-         id INT AUTO_INCREMENT PRIMARY KEY,
-         image_url TEXT,
-         links TEXT,
-         org_links TEXT
-     );
-     ```
+   - Tables are created from [`init.sql`](init.sql). With Docker Compose the database itself is created automatically from `DB_NAME`.
 
 5. **Run the Script**:
    ```bash
-   python moviescraper.py
+   uv run moviescraper.py
    ```
+
+6. **Run Tests / Lint**:
+   ```bash
+   uv run pytest -q
+   uv run ruff check src/ tests/ moviescraper.py
+   ```
+
+---
+
+## Run with Docker Compose
+
+```bash
+docker compose up --build
+```
+
+- `db` is MySQL 8.0 with `init.sql` applied on first start; credentials come from `DB_NAME` / `DB_USER` / `DB_PASSWORD` in `.env`.
+- `scraper` waits for `db` to be healthy, then runs `moviescraper.py` once and exits.
+- `shm_size: 2gb` is required for headless Chrome stability.
 
 ---
 
@@ -111,12 +110,13 @@ https://github.com/user-attachments/assets/8ab58885-8724-4059-9793-96fea4f3d916
   - `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`: MySQL database credentials.
   - `NUM_PROCESSES`: Number of processes for multiprocessing.
   - `START_PAGE`, `END_PAGE`: Range of pages to scrape.
-  - `MOVIEMOD_BASE_URL`: Base URL of the MoviesMod website.
+  - `website_type`: `hollywood` or `bollywood` (used to resolve the current domain).
 
 - **ChromeDriver**:
-  - Ensure ChromeDriver is installed and added to your system's PATH.
+  - Local runs: ensure ChromeDriver is installed and added to your system's PATH.
+  - Docker runs: handled by the `Dockerfile`.
 ---
-## Selenium setup in Cloud  
+## Selenium setup in Cloud
 
 ```bash
 apt update \
@@ -127,7 +127,7 @@ apt update \
 && unzip chromedriver-linux64.zip \
 &&  mv  chromedriver-linux64/chromedriver /usr/local/bin/ \
 &&  google-chrome --version \
-&& chromedriver --version \ 
+&& chromedriver --version \
 ```
 
 ---
