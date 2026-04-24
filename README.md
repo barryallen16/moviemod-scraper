@@ -119,16 +119,14 @@ docker compose up --build
 ## Selenium setup in Cloud
 
 ```bash
-apt update \
-&& apt install -y wget unzip \
+apt-get update \
+&& apt-get install -y wget \
 && wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
 && apt-get install -y -f ./google-chrome-stable_current_amd64.deb \
-&& wget https://storage.googleapis.com/chrome-for-testing-public/149.0.7827.155/linux64/chromedriver-linux64.zip \
-&& unzip chromedriver-linux64.zip \
-&&  mv  chromedriver-linux64/chromedriver /usr/local/bin/ \
-&&  google-chrome --version \
-&& chromedriver --version \
+&& google-chrome --version
 ```
+
+Do NOT install chromedriver manually. Selenium Manager (bundled with `selenium>=4.6`) downloads the matching driver at runtime. A manually pinned chromedriver drifts from Chrome upgrades and fails with `SessionNotCreatedException`.
 
 ---
 ## License
