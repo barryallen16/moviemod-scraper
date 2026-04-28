@@ -44,6 +44,7 @@ END_PAGE = int(os.getenv("END_PAGE", 1))
 WEBSITE_TYPE = os.getenv("website_type", "hollywood")  # noqa: SIM112
 
 MOVIEMOD_BASE_URL = getCurrentDomainName(website_type=WEBSITE_TYPE)
+log.info("Resolved base URL: %s", MOVIEMOD_BASE_URL)
 
 DB_PARAMS = {
     "host": DB_HOST,
