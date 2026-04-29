@@ -157,16 +157,19 @@ def scraping(start_page, end_page, imagesrc, downloadlinks, allongoing, lock):
 # Episode download path
 def _handle_landing_page(driver, url, screenshot_tag=""):
     """Execute the landing/verify JS flow. Returns True on success."""
+    log.info("Landing flow start: %s (at %s)", url, driver.current_url)
     try:
         wait = WebDriverWait(driver, 30)
         timer = wait.until(EC.presence_of_element_located((By.ID, "timer")))
         if timer:
+            log.info("Landing flow: timer found, submitting landing form")
             driver.execute_script("document.getElementById('landing').submit();")
             wait = WebDriverWait(driver, 10)
             element = wait.until(
                 EC.presence_of_element_located((By.ID, "verify_button2"))
             )
             if element:
+                log.info("Landing flow: verify_button2 found, clicking through")
                 driver.execute_script(
                     """var ubPopupContent = document.querySelector(".ub-popupcontent");
                     if (ubPopupContent) { ubPopupContent.style.display = "none"; }
@@ -182,20 +185,25 @@ def _handle_landing_page(driver, url, screenshot_tag=""):
                 EC.presence_of_element_located((By.LINK_TEXT, "GO TO DOWNLOAD"))
             )
             if element2:
+                log.info("Landing flow: GO TO DOWNLOAD found, clicking")
                 driver.execute_script(
                     'document.getElementById("two_steps_btn").click()'
                 )
+            log.info("Landing flow SUCCESS: now at %s", driver.current_url)
             return True
     except TimeoutException:
+        log.info("Landing flow TIMEOUT waiting for timer/verify at %s", driver.current_url)
         return False
     except Exception as e:
-        log.debug("Landing page flow failed for %s: %s", url, e)
+        log.info("Landing flow FAILED for %s at %s: %s", url, driver.current_url, e)
         return False
+    log.info("Landing flow: no timer element at %s", driver.current_url)
     return False
 
 
 def _verify_final_link(driver):
     """Check if we landed on driveseed.org/file/. Returns True/False."""
+    c_url_now = driver.current_url
     try:
         try16 = is_element_present(driver, By.CSS_SELECTOR, "a.navbar-brand")
     except Exception:
@@ -205,31 +213,39 @@ def _verify_final_link(driver):
             if driver.current_url.startswith("https://driveseed.org/file/"):
                 try16 = True
             else:
-                log.debug("Could not verify final link: %s", driver.current_url)
+                log.info("Verify final link FAILED (no navbar-brand): %s", driver.current_url)
                 return False
     if not try16:
+        log.info("Verify final link FAILED (navbar-brand absent): %s", c_url_now)
         return False
     c_url = driver.current_url
     if c_url == "https://driveseed.org/404":
+        log.info("Verify final link FAILED (404 page)")
         return False
-        return c_url.startswith("https://driveseed.org/file/")
+    verdict = c_url.startswith("https://driveseed.org/file/")
+    log.info("Verify final link verdict for %s: %s", c_url, verdict)
+    return verdict
 
 
 def _close_extra_tab(driver):
     window_handles = driver.window_handles
+    log.info("Open tabs: %d (at %s)", len(window_handles), driver.current_url)
     if len(window_handles) == 2:
         driver.switch_to.window(driver.window_handles[0])
         driver.close()
         driver.switch_to.window(driver.window_handles[0])
+        log.info("Closed extra tab, back at %s", driver.current_url)
 
 
 def _navigate_with_retry(driver, url, retries=3):
-    for _attempt in range(retries):
+    for attempt in range(1, retries + 1):
         try:
             driver.get(url)
+            log.info("Navigated to %s (attempt %d, now at %s)", url, attempt, driver.current_url)
             return True
-        except Exception:
-            continue
+        except Exception as e:
+            log.info("Navigation attempt %d/%d failed for %s: %s", attempt, retries, url, e)
+    log.info("Navigation FAILED after %d attempts: %s", retries, url)
     return False
 
 
@@ -243,7 +259,9 @@ def _detect_resolution_from_page(driver):
         name_el = driver.find_element(By.CSS_SELECTOR, "li.list-group-item")
         name_text = name_el.text.lower()
         log.info("File info after refresh: %s", name_text)
-    return detect_resolution(name_text), name_text
+    resolution = detect_resolution(name_text)
+    log.info("Resolution detect: %r from %r", resolution, name_text[:120])
+    return resolution, name_text
 
 
 def _process_episode_download(
@@ -254,17 +272,23 @@ def _process_episode_download(
     captions = []
     season_encountered = set()
 
-    for epi_url in episodedownloadlink:
+    log.info("Episode path: %d links to process", len(episodedownloadlink))
+    for n, epi_url in enumerate(episodedownloadlink, 1):
+        log.info("Episode %d/%d: %s", n, len(episodedownloadlink), epi_url)
         if not _navigate_with_retry(driver, epi_url):
             log.warning("Could not load episode link: %s", epi_url)
             continue
 
-        _handle_landing_page(driver, epi_url)
-        _handle_landing_page(driver, epi_url)  # retry once more on failure
+        landed = _handle_landing_page(driver, epi_url)
+        if not landed:
+            log.info("Retrying landing flow for %s", epi_url)
+            landed = _handle_landing_page(driver, epi_url)
+        log.info("Landing flow final result for %s: %s", epi_url, landed)
 
         _close_extra_tab(driver)
 
         if not _verify_final_link(driver):
+            log.info("Skipping episode, verify failed: %s", epi_url)
             continue
 
         c_url = driver.current_url
@@ -276,6 +300,7 @@ def _process_episode_download(
         resolution, name_text = _detect_resolution_from_page(driver)
 
         season = parse_season(name_text)
+        log.info("Season parsed: %r (seen so far: %s)", season, sorted(season_encountered))
         if season and season not in season_encountered:
             season_encountered.add(season)
             captions.append(f"\n\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\nSeason {season}")
@@ -284,6 +309,10 @@ def _process_episode_download(
             captions.append(
                 f"\n{_resolution_display_name(resolution)} - {c_url}"
             )
+        else:
+            log.info("No resolution matched, no caption line for %s", c_url)
+
+    log.info("Episode path done: %d direct links, %d caption blocks", len(allepidirectlinks), len(captions))
 
     if ongoingseries:
         log.info("Scraped %d episodes for ongoing series", len(allscrapedepisodes))
@@ -299,42 +328,53 @@ def _process_zip_download(driver, zipfilelinks, downloadlinks):
     season_encountered = set()
     unbrokenlink = False
 
-    for zip_url in zipfilelinks:
+    log.info("Zip path: %d links to process", len(zipfilelinks))
+    for n, zip_url in enumerate(zipfilelinks, 1):
+        log.info("Zip %d/%d: %s", n, len(zipfilelinks), zip_url)
         if zip_url.startswith(f"{MOVIEMOD_BASE_URL}download"):
+            log.info("Skipping internal download URL: %s", zip_url)
             continue
 
         if not _navigate_with_retry(driver, zip_url):
+            log.info("Skipping zip, navigation failed: %s", zip_url)
             continue
 
         # find fast-server-gdrive button
+        which_button = None
         try:
             fds = driver.find_element(
                 By.CSS_SELECTOR,
                 "a.maxbutton-1.maxbutton.maxbutton-fast-server-gdrive",
             )
+            which_button = "maxbutton-1"
         except Exception:
             try:
                 fds = driver.find_element(
                     By.CSS_SELECTOR,
                     "a.maxbutton-3.maxbutton.maxbutton-fast-server-gdrive",
                 )
+                which_button = "maxbutton-3"
             except Exception:
                 log.warning("Could not find zip file link: %s", downloadlinks)
                 continue
+        log.info("Zip button matched: %s", which_button)
 
         fdsl = fds.get_attribute("href")
         log.info("Zip file shortlink: %s", fdsl)
         try:
             driver.get(fdsl)
+            log.info("Loaded shortlink, now at %s", driver.current_url)
         except Exception as e:
             if "ERR_CONNECTION_CLOSED" in str(e):
                 driver.get(fdsl)
                 log.info("Page refreshed due to ERR_CONNECTION_CLOSED in fdsl")
 
-        _handle_landing_page(driver, fdsl)
+        landed = _handle_landing_page(driver, fdsl)
+        log.info("Landing flow result for zip shortlink: %s", landed)
         _close_extra_tab(driver)
 
         if not _verify_final_link(driver):
+            log.info("Skipping zip, verify failed: %s", zip_url)
             continue
 
         c_url = driver.current_url
@@ -345,6 +385,7 @@ def _process_zip_download(driver, zipfilelinks, downloadlinks):
         resolution, name_text = _detect_resolution_from_page(driver)
 
         season = parse_season(name_text)
+        log.info("Season parsed: %r (seen so far: %s)", season, sorted(season_encountered))
         if season and season not in season_encountered:
             season_encountered.add(season)
             captions.append(f"\n\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\nSeason {season}")
@@ -353,7 +394,11 @@ def _process_zip_download(driver, zipfilelinks, downloadlinks):
             captions.append(
                 f"\n{_resolution_display_name(resolution)} - {c_url}"
             )
+        else:
+            log.info("No resolution matched, no caption line for %s", c_url)
 
+    log.info("Zip path done: %d direct links, %d caption blocks, unbroken=%s",
+             len(allzipdirectlinks), len(captions), unbrokenlink)
     return allzipdirectlinks, captions, unbrokenlink
 
 
@@ -525,8 +570,12 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
                         "a.maxbutton-24.maxbutton.maxbutton-batch-zip",
                     )
                     zipfilelinks = [z.get_attribute("href") for z in zipfileb]
+                log.info("checkzip=%s, zip buttons found: %d", checkzip, len(zipfilelinks))
+                for z in zipfilelinks:
+                    log.info("Zip button href: %s", z)
 
                 if not zipfilelinks:
+                    log.info("No zip buttons, skipping title: %s", downloadlinks)
                     continue
 
                 seriesdownloadlink = []
@@ -534,6 +583,7 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
                     By.CSS_SELECTOR,
                     "a.maxbutton-23.maxbutton.maxbutton-episode-links",
                 )
+                log.info("Episode-link buttons (maxbutton-23): %d", len(sdbutton))
                 if is_element_present(
                     driver,
                     By.CSS_SELECTOR,
@@ -546,29 +596,35 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
                         seriesdownloadlink.append(el.get_attribute("href"))
                 for sdb in sdbutton:
                     seriesdownloadlink.append(sdb.get_attribute("href"))
+                log.info("Series download links collected: %d", len(seriesdownloadlink))
+                for s in seriesdownloadlink:
+                    log.info("Series link: %s", s)
 
                 captions = []
                 allepidirectlinks = []
                 for sd_link in seriesdownloadlink:
                     if sd_link.startswith(f"{MOVIEMOD_BASE_URL}download"):
+                        log.info("Skipping internal download URL: %s", sd_link)
                         continue
                     if not _navigate_with_retry(driver, sd_link):
                         log.warning("Error loading series link: %s", sd_link)
                         continue
-
+                    # Site dropped the darkmysite_* classes; match episode
+                    # anchors by href prefix instead (same filter as before).
                     epidl = driver.find_elements(
                         By.CSS_SELECTOR,
-                        "a.darkmysite_style_txt_border.darkmysite_style_link.darkmysite_processed",
+                        "a[href^='https://cloud.unblockedgames.world/?']",
                     )
+                    log.info("Raw episode anchors on page: %d (at %s)", len(epidl), driver.current_url)
+                    for e in epidl[:10]:
+                        log.info("Raw episode anchor href: %r", e.get_attribute("href"))
                     episodedownloadlink = [
-                        e.get_attribute("href")
-                        for e in epidl
-                        if e.get_attribute("href").startswith(
-                            "https://tech.unblockedgames.world/?"
-                        )
+                        href
+                        for href in (e.get_attribute("href") for e in epidl)
+                        if href
                     ]
                     log.info(
-                        "Episode downloads found: %d", len(episodedownloadlink)
+                        "Episode downloads found: %d (after cloud-link filter)", len(episodedownloadlink)
                     )
 
                     if ongoingseries:
@@ -580,17 +636,21 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
                         ongoingseries,
                         allscrapedepisodes,
                     )
+                    log.info("Episode batch done: %d links, %d captions", len(ep_links), len(ep_captions))
                     allepidirectlinks.extend(ep_links)
                     captions.extend(ep_captions)
 
                 if ongoingseries:
                     ongoingseriesepilist[checker] = [allscrapedepisodes]
 
+                log.info("Series totals: %d direct links, %d caption blocks", len(allepidirectlinks), len(captions))
                 if allepidirectlinks:
                     log.info(
                         "All episode direct links: %s",
                         "\n".join(allepidirectlinks),
                     )
+                else:
+                    log.info("No episode direct links, skipping series DB insert")
 
                 if allepidirectlinks:
                     final_captions = "".join(captions)
@@ -618,6 +678,10 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
                     zip_links, zip_captions, zip_unbroken = _process_zip_download(
                         driver, zipfilelinks, downloadlinks
                     )
+                    log.info("Zip totals: %d links, %d captions, unbroken=%s",
+                             len(zip_links), len(zip_captions), zip_unbroken)
+                    if not zip_unbroken:
+                        log.info("Zip produced no unbroken link, skipping zip DB insert")
                     if zip_unbroken:
                         fullcaption = movie_descrp + "".join(zip_captions)
                         log.info(fullcaption)
