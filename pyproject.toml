@@ -11,6 +11,7 @@ dependencies = [
     "retry>=0.9",
     "python-dotenv>=1.2",
     "beautifulsoup4>=4.15",
+    "questionary>=2.1.1",
 ]
 
 [project.optional-dependencies]
