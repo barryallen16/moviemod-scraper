@@ -1,6 +1,7 @@
 import logging
 import multiprocessing
 import os
+import sys
 import time
 
 from dotenv import load_dotenv
@@ -500,7 +501,18 @@ STAR = "\u2605" * 16  # ★★★★★★★★★★★★★★
 
 
 @retry((ConnectionError, Timeout, TimeoutException), tries=10, delay=2, backoff=2)
-def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_options):
+def process_download_link(
+    thread_id,
+    imagesrc,
+    link_queue,
+    allongoing,
+    chrome_options,
+    only_episode_urls=None,
+    only_zip_urls=None,
+    only_button_urls=None,
+    scope="all",
+    episode_indices=None,
+):
     try:
         driver = webdriver.Chrome(options=chrome_options)
         while not link_queue.empty():
@@ -570,11 +582,14 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
                         "a.maxbutton-24.maxbutton.maxbutton-batch-zip",
                     )
                     zipfilelinks = [z.get_attribute("href") for z in zipfileb]
+                if only_zip_urls is not None:
+                    zipfilelinks = [u for u in zipfilelinks if u in only_zip_urls]
+                    log.info("Pre-filtered to %d chosen zip links", len(zipfilelinks))
                 log.info("checkzip=%s, zip buttons found: %d", checkzip, len(zipfilelinks))
                 for z in zipfilelinks:
                     log.info("Zip button href: %s", z)
 
-                if not zipfilelinks:
+                if not zipfilelinks and scope in ("all", "zip"):
                     log.info("No zip buttons, skipping title: %s", downloadlinks)
                     continue
 
@@ -596,12 +611,18 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
                         seriesdownloadlink.append(el.get_attribute("href"))
                 for sdb in sdbutton:
                     seriesdownloadlink.append(sdb.get_attribute("href"))
+                if only_episode_urls is not None:
+                    seriesdownloadlink = [u for u in seriesdownloadlink if u in only_episode_urls]
+                    log.info("Pre-filtered to %d chosen episode links", len(seriesdownloadlink))
                 log.info("Series download links collected: %d", len(seriesdownloadlink))
                 for s in seriesdownloadlink:
                     log.info("Series link: %s", s)
 
                 captions = []
                 allepidirectlinks = []
+                if scope == "zip":
+                    log.info("Scope is zip-only, skipping episode links")
+                    seriesdownloadlink = []
                 for sd_link in seriesdownloadlink:
                     if sd_link.startswith(f"{MOVIEMOD_BASE_URL}download"):
                         log.info("Skipping internal download URL: %s", sd_link)
@@ -626,6 +647,11 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
                     log.info(
                         "Episode downloads found: %d (after cloud-link filter)", len(episodedownloadlink)
                     )
+                    if scope == "specific" and episode_indices is not None:
+                        episodedownloadlink = [
+                            u for i, u in enumerate(episodedownloadlink) if i in episode_indices
+                        ]
+                        log.info("Specific-episode filter: %d links left", len(episodedownloadlink))
 
                     if ongoingseries:
                         allscrapedepisodes.extend(episodedownloadlink)
@@ -673,7 +699,7 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
                     finally:
                         conn.close()
 
-                if checkzip:
+                if checkzip and scope in ("all", "zip"):
                     log.info("Checking for zip files")
                     zip_links, zip_captions, zip_unbroken = _process_zip_download(
                         driver, zipfilelinks, downloadlinks
@@ -714,6 +740,9 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
                 if not theatreprint and downloadbutton:
                     driver.implicitly_wait(10)
                     buttonlinks = [b.get_attribute("href") for b in downloadbutton]
+                    if only_button_urls is not None:
+                        buttonlinks = [u for u in buttonlinks if u in only_button_urls]
+                        log.info("Pre-filtered to %d chosen buttons", len(buttonlinks))
 
                     mov_links, mov_caption, mov_unbroken = _process_movie_download(
                         driver, buttonlinks
@@ -740,36 +769,24 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
         notify_error(TELEGRAM_BOT_TOKEN, TELEGRAM_GROUP_CHAT_ID, str(e))
 
 
-if __name__ == "__main__":
-    log.info("Starting moviemod-scraper")
+BANNER = """
+███╗   ███╗ ██████╗ ██╗   ██╗██╗███████╗███╗   ███╗ ██████╗ ██████╗ ███████╗
+████╗ ████║██╔═══██╗██║   ██║██║██╔════╝████╗ ████║██╔═══██╗██╔══██╗██╔════╝
+██╔████╔██║██║   ██║██║   ██║██║█████╗  ██╔████╔██║██║   ██║██║  ██║███████╗
+██║╚██╔╝██║██║   ██║╚██╗ ██╔╝██║██╔══╝  ██║╚██╔╝██║██║   ██║██║  ██║╚════██║
+██║ ╚═╝ ██║╚██████╔╝ ╚████╔╝ ██║███████╗██║ ╚═╝ ██║╚██████╔╝██████╔╝███████║
+╚═╝     ╚═╝ ╚═════╝   ╚═══╝  ╚═╝╚══════╝╚═╝     ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝
 
-    # --- Phase 1: scrape pages for image URLs + download links ---
-    num_processes = NUM_PROCESSES
-    start_page = START_PAGE
-    end_page = END_PAGE
+███████╗ ██████╗██████╗  █████╗ ██████╗ ███████╗██████╗
+██╔════╝██╔════╝██╔══██╗██╔══██╗██╔══██╗██╔════╝██╔══██╗
+███████╗██║     ██████╔╝███████║██████╔╝█████╗  ██████╔╝
+╚════██║██║     ██╔══██╗██╔══██║██╔═══╝ ██╔══╝  ██╔══██╗
+███████║╚██████╗██║  ██║██║  ██║██║     ███████╗██║  ██║
+╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚══════╝╚═╝  ╚═╝
+"""
 
-    imagesrc = multiprocessing.Manager().list()
-    downloadlinks = multiprocessing.Manager().list()
-    allongoing = multiprocessing.Manager().list()
 
-    page_ranges = [(start_page, end_page)]
-
-    lock = multiprocessing.Manager().Lock()
-    pool = multiprocessing.Pool(processes=num_processes)
-    pool.starmap(
-        scraping,
-        [
-            (start, end, imagesrc, downloadlinks, allongoing, lock)
-            for start, end in page_ranges
-        ],
-    )
-    pool.close()
-    pool.join()
-
-    log.info("Scraped %d images, %d download links, %d ongoing",
-             len(imagesrc), len(downloadlinks), len(allongoing))
-
-    # --- Phase 2: process each download link ---
+def build_chrome_options():
     chrome_options = webdriver.ChromeOptions()
     chrome_options.add_argument("--headless")  # comment this to run in headfull mode
     user_agent = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.92 Mobile Safari/537.36"
@@ -786,29 +803,136 @@ if __name__ == "__main__":
     chrome_options.add_argument("--log-level=3")
     chrome_options.add_argument("--enable-unsafe-swiftshader")
     chrome_options.add_argument(f"referer={referer}")
+    return chrome_options
 
+
+def run_pages(start_page, end_page, num_processes):
+    """Phase 1: scrape pages. Returns (images, links, ongoing) manager lists."""
+    imagesrc = multiprocessing.Manager().list()
+    downloadlinks = multiprocessing.Manager().list()
+    allongoing = multiprocessing.Manager().list()
+
+    lock = multiprocessing.Manager().Lock()
+    pool = multiprocessing.Pool(processes=num_processes)
+    pool.starmap(scraping, [(start_page, end_page, imagesrc, downloadlinks, allongoing, lock)])
+    pool.close()
+    pool.join()
+
+    log.info("Scraped %d images, %d download links, %d ongoing",
+             len(imagesrc), len(downloadlinks), len(allongoing))
+    return imagesrc, downloadlinks, allongoing
+
+
+def run_single(req):
+    """Process one SingleRequest through the phase-2 pipeline (single worker)."""
     link_queue = multiprocessing.Queue()
-    for link in downloadlinks:
-        link_queue.put(link)
-
+    link_queue.put(req.post_url)
     imagesrc_queue = multiprocessing.Queue()
-    for image in imagesrc:
-        imagesrc_queue.put(image)
-
+    imagesrc_queue.put(req.image_url)
+    allongoing = [req.post_url] if req.ongoing else []
+    chrome_options = build_chrome_options()
     start_time = time.time()
-    processes = []
-    for i in range(num_processes):
-        process = multiprocessing.Process(
-            target=process_download_link,
-            args=(i, imagesrc_queue, link_queue, allongoing, chrome_options),
-        )
-        processes.append(process)
-        process.start()
-    for process in processes:
-        process.join()
-
-    end_time = time.time()
-    total_time = end_time - start_time
-    log.info("Total time taken: %.1f seconds", total_time)
+    process_download_link(
+        0, imagesrc_queue, link_queue, allongoing, chrome_options,
+        only_episode_urls=req.episode_urls, only_zip_urls=req.zip_urls,
+        only_button_urls=req.button_urls, scope=req.scope,
+        episode_indices=req.episode_indices,
+    )
+    total_time = time.time() - start_time
+    log.info("Single-title run done in %.1f seconds", total_time)
     notify_complete(TELEGRAM_BOT_TOKEN, TELEGRAM_GROUP_CHAT_ID, total_time)
+
+
+def _parse_args(argv=None):
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="moviescraper", description="MovieMod scraper")
+    sub = parser.add_subparsers(dest="cmd")
+    p_pages = sub.add_parser("pages", help="mass scrape a page range")
+    p_pages.add_argument("--start", type=int, default=START_PAGE)
+    p_pages.add_argument("--end", type=int, default=END_PAGE)
+    p_pages.add_argument("-p", "--processes", type=int, default=NUM_PROCESSES)
+    p_search = sub.add_parser("search", help="search and scrape one title")
+    p_search.add_argument("query", nargs="?", default=None)
+    p_search.add_argument("--pick", type=int, default=None,
+                          help="result index (skips arrow menu)")
+    p_search.add_argument("--season", default=None, help="season number (skips prompt)")
+    p_search.add_argument("--resolution", default=None,
+                          help="quality label, e.g. 720px264 (skips prompt)")
+    p_search.add_argument("--scope", default=None,
+                          choices=["all", "episodes", "specific", "zip"],
+                          help="what to fetch (skips prompt)")
+    p_search.add_argument("--episodes", default=None,
+                          help="episode numbers for scope=specific, e.g. 1-3,5")
+    # Set AFTER add_subparsers (it resets cmd to None). cmd stays None
+    # when no subcommand is given so __main__ can tell "no args" apart
+    # from an explicit `pages` call; everything else gets safe defaults.
+    parser.set_defaults(
+        query=None, pick=None, season=None, resolution=None,
+        scope=None, episodes=None,
+        start=START_PAGE, end=END_PAGE, processes=NUM_PROCESSES,
+    )
+    return parser.parse_args(argv)
+
+
+if __name__ == "__main__":
+    print(BANNER)
+    log.info("Starting moviemod-scraper")
+    args = _parse_args()
+
+    if args.cmd is None:
+        if sys.stdin.isatty():
+            from src import interactive as _ix
+
+            mode = _ix.ask_mode()
+            args.cmd = "search" if mode.startswith("search") else "pages"
+        else:
+            args.cmd = "pages"  # headless (e.g. compose up): mass scrape, no prompts
+
+    if getattr(args, "cmd", None) == "search":
+        from src import interactive as _ix
+
+        req = _ix.run_search_flow(
+            MOVIEMOD_BASE_URL, args.query, args.pick,
+            args.season, args.resolution, args.scope, args.episodes,
+        )
+        if req is None:
+            log.info("Nothing selected, exiting")
+        else:
+            run_single(req)
+    else:
+        # --- Phase 1: scrape pages for image URLs + download links ---
+        num_processes = getattr(args, "processes", NUM_PROCESSES)
+        start_page = getattr(args, "start", START_PAGE)
+        end_page = getattr(args, "end", END_PAGE)
+
+        imagesrc, downloadlinks, allongoing = run_pages(start_page, end_page, num_processes)
+
+        # --- Phase 2: process each download link ---
+        chrome_options = build_chrome_options()
+
+        link_queue = multiprocessing.Queue()
+        for link in downloadlinks:
+            link_queue.put(link)
+
+        imagesrc_queue = multiprocessing.Queue()
+        for image in imagesrc:
+            imagesrc_queue.put(image)
+
+        start_time = time.time()
+        processes = []
+        for i in range(num_processes):
+            process = multiprocessing.Process(
+                target=process_download_link,
+                args=(i, imagesrc_queue, link_queue, allongoing, chrome_options),
+            )
+            processes.append(process)
+            process.start()
+        for process in processes:
+            process.join()
+
+        end_time = time.time()
+        total_time = end_time - start_time
+        log.info("Total time taken: %.1f seconds", total_time)
+        notify_complete(TELEGRAM_BOT_TOKEN, TELEGRAM_GROUP_CHAT_ID, total_time)
 
