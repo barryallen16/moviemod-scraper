@@ -30,30 +30,34 @@ def insert_series(
     description: str,
     captions: str,
     direct_links: str,
-) -> None:
+) -> int:
     cursor = connection.cursor()
     cursor.execute(
         "INSERT INTO series (image_url, movie_descrp, links, org_links) VALUES (%s, %s, %s, %s)",
         (image_url, description, captions, direct_links),
     )
     connection.commit()
+    row_id = cursor.lastrowid
     cursor.close()
-    log.info("Inserted series: %s", image_url)
+    log.debug("Inserted series row %s", row_id)
+    return row_id
 
 
 def insert_ongoing(
     connection: mysql.connector.MySQLConnection,
     series_link: str,
     episode_links: str,
-) -> None:
+) -> int:
     cursor = connection.cursor()
     cursor.execute(
         "INSERT INTO ongoing (serieslink, episodelinks) VALUES (%s, %s)",
         (series_link, episode_links),
     )
     connection.commit()
+    row_id = cursor.lastrowid
     cursor.close()
-    log.info("Inserted ongoing series: %s", series_link)
+    log.debug("Inserted ongoing row %s", row_id)
+    return row_id
 
 
 def insert_movie(
@@ -61,15 +65,17 @@ def insert_movie(
     image_url: str,
     caption: str,
     direct_links: str,
-) -> None:
+) -> int:
     cursor = connection.cursor()
     cursor.execute(
         "INSERT INTO movies (image_url, caption, org_links) VALUES (%s, %s, %s)",
         (image_url, caption, direct_links),
     )
     connection.commit()
+    row_id = cursor.lastrowid
     cursor.close()
-    log.info("Inserted movie: %s", image_url)
+    log.debug("Inserted movie row %s", row_id)
+    return row_id
 
 
 def insert_zip(
@@ -77,12 +83,14 @@ def insert_zip(
     image_url: str,
     caption: str,
     direct_links: str,
-) -> None:
+) -> int:
     cursor = connection.cursor()
     cursor.execute(
         "INSERT INTO zip (image_url, links, org_links) VALUES (%s, %s, %s)",
         (image_url, caption, direct_links),
     )
     connection.commit()
+    row_id = cursor.lastrowid
     cursor.close()
-    log.info("Inserted zip: %s", image_url)
+    log.debug("Inserted zip row %s", row_id)
+    return row_id

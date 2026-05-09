@@ -1,6 +1,7 @@
 import logging
 import multiprocessing
 import os
+import re
 import sys
 import time
 
@@ -27,11 +28,35 @@ from src.notify import notify_complete, notify_error, notify_no_season
 
 load_dotenv()
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
 log = logging.getLogger(__name__)
+
+_EP_RE = re.compile(r"s(\d+)e(\d+)", re.IGNORECASE)
+
+
+def setup_logging(verbose=False):
+    """INFO = milestones only; DEBUG (--verbose) = every step."""
+    logging.basicConfig(
+        level=logging.DEBUG if verbose else logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        force=True,
+    )
+    for noisy in ("httpx", "httpcore", "selenium", "urllib3"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
+
+
+def _short(url, limit=64):
+    """Compact URL for milestone lines: host + trimmed path. Full URL → DEBUG."""
+    if not url:
+        return "-"
+    if len(url) <= limit:
+        return url
+    return f"{url[:limit]}…(+{len(url) - limit})"
+
+
+def _ep_tag(name_text, fallback):
+    """s01e03 from a driveseed filename, else the positional fallback."""
+    m = _EP_RE.search(name_text or "")
+    return f"s{m.group(1)}e{m.group(2)}" if m else fallback
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_GROUP_CHAT_ID = os.getenv("TELEGRAM_GROUP_CHAT_ID")
@@ -45,7 +70,6 @@ END_PAGE = int(os.getenv("END_PAGE", 1))
 WEBSITE_TYPE = os.getenv("website_type", "hollywood")  # noqa: SIM112
 
 MOVIEMOD_BASE_URL = getCurrentDomainName(website_type=WEBSITE_TYPE)
-log.info("Resolved base URL: %s", MOVIEMOD_BASE_URL)
 
 DB_PARAMS = {
     "host": DB_HOST,
@@ -80,11 +104,10 @@ def _resolution_display_name(resolution):
     return names.get(resolution, resolution)
 
 
-# Load existing images from DB
+# Load existing images from DB (logged in __main__ after setup_logging)
 _conn = get_connection(DB_PARAMS)
 allimagesrcdb = load_existing_images(_conn)
 _conn.close()
-log.info("Loaded %d existing images from DB", len(allimagesrcdb))
 
 
 # Page scraping
@@ -158,19 +181,19 @@ def scraping(start_page, end_page, imagesrc, downloadlinks, allongoing, lock):
 # Episode download path
 def _handle_landing_page(driver, url, screenshot_tag=""):
     """Execute the landing/verify JS flow. Returns True on success."""
-    log.info("Landing flow start: %s (at %s)", url, driver.current_url)
+    log.debug("Landing flow start: %s (at %s)", _short(url), _short(driver.current_url))
     try:
         wait = WebDriverWait(driver, 30)
         timer = wait.until(EC.presence_of_element_located((By.ID, "timer")))
         if timer:
-            log.info("Landing flow: timer found, submitting landing form")
+            log.debug("Landing flow: timer found, submitting landing form")
             driver.execute_script("document.getElementById('landing').submit();")
             wait = WebDriverWait(driver, 10)
             element = wait.until(
                 EC.presence_of_element_located((By.ID, "verify_button2"))
             )
             if element:
-                log.info("Landing flow: verify_button2 found, clicking through")
+                log.debug("Landing flow: verify_button2 found, clicking through")
                 driver.execute_script(
                     """var ubPopupContent = document.querySelector(".ub-popupcontent");
                     if (ubPopupContent) { ubPopupContent.style.display = "none"; }
@@ -186,19 +209,19 @@ def _handle_landing_page(driver, url, screenshot_tag=""):
                 EC.presence_of_element_located((By.LINK_TEXT, "GO TO DOWNLOAD"))
             )
             if element2:
-                log.info("Landing flow: GO TO DOWNLOAD found, clicking")
+                log.debug("Landing flow: GO TO DOWNLOAD found, clicking")
                 driver.execute_script(
                     'document.getElementById("two_steps_btn").click()'
                 )
-            log.info("Landing flow SUCCESS: now at %s", driver.current_url)
+            log.debug("Landing flow SUCCESS: now at %s", _short(driver.current_url))
             return True
     except TimeoutException:
-        log.info("Landing flow TIMEOUT waiting for timer/verify at %s", driver.current_url)
+        log.debug("Landing flow TIMEOUT waiting for timer/verify at %s", _short(driver.current_url))
         return False
     except Exception as e:
-        log.info("Landing flow FAILED for %s at %s: %s", url, driver.current_url, e)
+        log.debug("Landing flow FAILED for %s at %s: %s", _short(url), _short(driver.current_url), e)
         return False
-    log.info("Landing flow: no timer element at %s", driver.current_url)
+    log.debug("Landing flow: no timer element at %s", _short(driver.current_url))
     return False
 
 
@@ -214,39 +237,39 @@ def _verify_final_link(driver):
             if driver.current_url.startswith("https://driveseed.org/file/"):
                 try16 = True
             else:
-                log.info("Verify final link FAILED (no navbar-brand): %s", driver.current_url)
+                log.debug("Verify final link FAILED (no navbar-brand): %s", _short(driver.current_url))
                 return False
     if not try16:
-        log.info("Verify final link FAILED (navbar-brand absent): %s", c_url_now)
+        log.debug("Verify final link FAILED (navbar-brand absent): %s", _short(c_url_now))
         return False
     c_url = driver.current_url
     if c_url == "https://driveseed.org/404":
-        log.info("Verify final link FAILED (404 page)")
+        log.debug("Verify final link FAILED (404 page)")
         return False
     verdict = c_url.startswith("https://driveseed.org/file/")
-    log.info("Verify final link verdict for %s: %s", c_url, verdict)
+    log.debug("Verify final link verdict for %s: %s", _short(c_url), verdict)
     return verdict
 
 
 def _close_extra_tab(driver):
     window_handles = driver.window_handles
-    log.info("Open tabs: %d (at %s)", len(window_handles), driver.current_url)
+    log.debug("Open tabs: %d (at %s)", len(window_handles), _short(driver.current_url))
     if len(window_handles) == 2:
         driver.switch_to.window(driver.window_handles[0])
         driver.close()
         driver.switch_to.window(driver.window_handles[0])
-        log.info("Closed extra tab, back at %s", driver.current_url)
+        log.debug("Closed extra tab, back at %s", _short(driver.current_url))
 
 
 def _navigate_with_retry(driver, url, retries=3):
     for attempt in range(1, retries + 1):
         try:
             driver.get(url)
-            log.info("Navigated to %s (attempt %d, now at %s)", url, attempt, driver.current_url)
+            log.debug("Navigated to %s (attempt %d)", _short(url), attempt)
             return True
         except Exception as e:
-            log.info("Navigation attempt %d/%d failed for %s: %s", attempt, retries, url, e)
-    log.info("Navigation FAILED after %d attempts: %s", retries, url)
+            log.debug("Navigation attempt %d/%d failed for %s: %s", attempt, retries, _short(url), e)
+    log.warning("Navigation FAILED after %d attempts: %s", retries, _short(url))
     return False
 
 
@@ -259,9 +282,9 @@ def _detect_resolution_from_page(driver):
         driver.refresh()
         name_el = driver.find_element(By.CSS_SELECTOR, "li.list-group-item")
         name_text = name_el.text.lower()
-        log.info("File info after refresh: %s", name_text)
+        log.debug("File info after refresh: %s", name_text)
     resolution = detect_resolution(name_text)
-    log.info("Resolution detect: %r from %r", resolution, name_text[:120])
+    log.debug("Resolution detect: %r from %r", resolution, name_text[:120])
     return resolution, name_text
 
 
@@ -273,27 +296,28 @@ def _process_episode_download(
     captions = []
     season_encountered = set()
 
-    log.info("Episode path: %d links to process", len(episodedownloadlink))
+    total = len(episodedownloadlink)
+    log.debug("Episode path: %d links to process", total)
     for n, epi_url in enumerate(episodedownloadlink, 1):
-        log.info("Episode %d/%d: %s", n, len(episodedownloadlink), epi_url)
+        tag = f"E{n:02d}/{total}"
+        log.info("→ %s resolving…", tag)
         if not _navigate_with_retry(driver, epi_url):
-            log.warning("Could not load episode link: %s", epi_url)
+            log.info("✘ %s navigation failed", tag)
             continue
 
         landed = _handle_landing_page(driver, epi_url)
         if not landed:
-            log.info("Retrying landing flow for %s", epi_url)
+            log.debug("Retrying landing flow for %s", _short(epi_url))
             landed = _handle_landing_page(driver, epi_url)
-        log.info("Landing flow final result for %s: %s", epi_url, landed)
+        log.debug("Landing flow final result for %s: %s", _short(epi_url), landed)
 
         _close_extra_tab(driver)
 
         if not _verify_final_link(driver):
-            log.info("Skipping episode, verify failed: %s", epi_url)
+            log.info("✘ %s verify failed", tag)
             continue
 
         c_url = driver.current_url
-        log.info("Final episode URL: %s", c_url)
         allepidirectlinks.append(c_url)
         if ongoingseries:
             allscrapedepisodes.append(c_url)
@@ -301,7 +325,7 @@ def _process_episode_download(
         resolution, name_text = _detect_resolution_from_page(driver)
 
         season = parse_season(name_text)
-        log.info("Season parsed: %r (seen so far: %s)", season, sorted(season_encountered))
+        log.debug("Season parsed: %r (seen so far: %s)", season, sorted(season_encountered))
         if season and season not in season_encountered:
             season_encountered.add(season)
             captions.append(f"\n\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\nSeason {season}")
@@ -310,13 +334,13 @@ def _process_episode_download(
             captions.append(
                 f"\n{_resolution_display_name(resolution)} - {c_url}"
             )
+            log.info("✓ %s %s · %s", tag, _ep_tag(name_text, f"ep{n}"), resolution)
         else:
-            log.info("No resolution matched, no caption line for %s", c_url)
+            log.info("✘ %s no resolution matched", tag)
 
-    log.info("Episode path done: %d direct links, %d caption blocks", len(allepidirectlinks), len(captions))
-
+    log.debug("Episode path done: %d direct links, %d caption blocks", len(allepidirectlinks), len(captions))
     if ongoingseries:
-        log.info("Scraped %d episodes for ongoing series", len(allscrapedepisodes))
+        log.debug("Scraped %d episodes for ongoing series", len(allscrapedepisodes))
 
     return allepidirectlinks, captions
 
@@ -329,15 +353,17 @@ def _process_zip_download(driver, zipfilelinks, downloadlinks):
     season_encountered = set()
     unbrokenlink = False
 
-    log.info("Zip path: %d links to process", len(zipfilelinks))
+    total = len(zipfilelinks)
+    log.debug("Zip path: %d links to process", total)
     for n, zip_url in enumerate(zipfilelinks, 1):
-        log.info("Zip %d/%d: %s", n, len(zipfilelinks), zip_url)
+        tag = f"ZIP{n}/{total}" if total > 1 else "ZIP"
+        log.info("→ %s resolving…", tag)
         if zip_url.startswith(f"{MOVIEMOD_BASE_URL}download"):
-            log.info("Skipping internal download URL: %s", zip_url)
+            log.debug("Skipping internal download URL: %s", _short(zip_url))
             continue
 
         if not _navigate_with_retry(driver, zip_url):
-            log.info("Skipping zip, navigation failed: %s", zip_url)
+            log.info("✘ %s navigation failed", tag)
             continue
 
         # find fast-server-gdrive button
@@ -356,37 +382,36 @@ def _process_zip_download(driver, zipfilelinks, downloadlinks):
                 )
                 which_button = "maxbutton-3"
             except Exception:
-                log.warning("Could not find zip file link: %s", downloadlinks)
+                log.warning("Could not find zip file link: %s", _short(downloadlinks))
                 continue
-        log.info("Zip button matched: %s", which_button)
+        log.debug("Zip button matched: %s", which_button)
 
         fdsl = fds.get_attribute("href")
-        log.info("Zip file shortlink: %s", fdsl)
+        log.debug("Zip file shortlink: %s", fdsl)
         try:
             driver.get(fdsl)
-            log.info("Loaded shortlink, now at %s", driver.current_url)
+            log.debug("Loaded shortlink, now at %s", _short(driver.current_url))
         except Exception as e:
             if "ERR_CONNECTION_CLOSED" in str(e):
                 driver.get(fdsl)
-                log.info("Page refreshed due to ERR_CONNECTION_CLOSED in fdsl")
+                log.debug("Page refreshed due to ERR_CONNECTION_CLOSED in fdsl")
 
         landed = _handle_landing_page(driver, fdsl)
-        log.info("Landing flow result for zip shortlink: %s", landed)
+        log.debug("Landing flow result for zip shortlink: %s", landed)
         _close_extra_tab(driver)
 
         if not _verify_final_link(driver):
-            log.info("Skipping zip, verify failed: %s", zip_url)
+            log.info("✘ %s verify failed", tag)
             continue
 
         c_url = driver.current_url
-        log.info("Final zip URL: %s", c_url)
         allzipdirectlinks.append(c_url)
         unbrokenlink = True
 
         resolution, name_text = _detect_resolution_from_page(driver)
 
         season = parse_season(name_text)
-        log.info("Season parsed: %r (seen so far: %s)", season, sorted(season_encountered))
+        log.debug("Season parsed: %r (seen so far: %s)", season, sorted(season_encountered))
         if season and season not in season_encountered:
             season_encountered.add(season)
             captions.append(f"\n\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\nSeason {season}")
@@ -395,11 +420,12 @@ def _process_zip_download(driver, zipfilelinks, downloadlinks):
             captions.append(
                 f"\n{_resolution_display_name(resolution)} - {c_url}"
             )
+            log.info("✓ %s %s", tag, resolution)
         else:
-            log.info("No resolution matched, no caption line for %s", c_url)
+            log.info("✘ %s no resolution matched", tag)
 
-    log.info("Zip path done: %d direct links, %d caption blocks, unbroken=%s",
-             len(allzipdirectlinks), len(captions), unbrokenlink)
+    log.debug("Zip path done: %d direct links, %d caption blocks, unbroken=%s",
+              len(allzipdirectlinks), len(captions), unbrokenlink)
     return allzipdirectlinks, captions, unbrokenlink
 
 
@@ -421,8 +447,10 @@ def _process_movie_download(driver, buttonlinks):
         ):
             continue
 
-        log.info("Download button link: %s", btn_url)
+        log.info("→ movie button resolving…")
+        log.debug("Download button link: %s", _short(btn_url))
         if not _navigate_with_retry(driver, btn_url):
+            log.info("✘ movie button navigation failed")
             continue
 
         # find gdrive link button
@@ -452,7 +480,7 @@ def _process_movie_download(driver, buttonlinks):
                 pass
 
         if gddl is None:
-            log.warning("gddl not present: %s", btn_url)
+            log.warning("gddl not present: %s", _short(btn_url))
             continue
 
         gddlh = gddl.get_attribute("href")
@@ -461,7 +489,7 @@ def _process_movie_download(driver, buttonlinks):
         except Exception as e:
             if "ERR_CONNECTION_CLOSED" in str(e):
                 driver.get(gddlh)
-                log.info("Page refreshed due to ERR_CONNECTION_CLOSED in gddlh")
+                log.debug("Page refreshed due to ERR_CONNECTION_CLOSED in gddlh")
 
         _handle_landing_page(driver, gddlh)
         _close_extra_tab(driver)
@@ -470,7 +498,7 @@ def _process_movie_download(driver, buttonlinks):
             continue
 
         c_url = driver.current_url
-        log.info("Final movie URL: %s", c_url)
+        log.debug("Final movie URL: %s", _short(c_url))
         allmoviedirectlinks.append(c_url)
         unbrokenlink = True
 
@@ -551,7 +579,7 @@ def process_download_link(
                 starti = 5
                 endi = result.index("Size")
                 movie_descrp = result[starti:endi]
-                log.info("Description: %s", movie_descrp)
+                log.debug("Description: %s", movie_descrp)
             except (ValueError, Exception):
                 extracted_text = []
                 movie_info = driver.find_elements(By.XPATH, "//p[strong]")
@@ -561,14 +589,16 @@ def process_download_link(
                 starti = result.index("Name")
                 endi = result.index("Size")
                 movie_descrp = result[starti:endi]
-                log.info("Description: %s", movie_descrp)
+                log.debug("Description: %s", movie_descrp)
 
             series = "Season" in result
             theatreprint = "HDCaM" in result
+            title_t0 = time.time()
+            title_name = movie_descrp.strip().splitlines()[0] if movie_descrp.strip() else downloadlinks
 
             # SERIES path
             if series and not anime:
-                log.info("Series found")
+                log.info("── Series · %s ──", title_name)
                 driver.implicitly_wait(10)
                 checkzip = is_element_present(
                     driver,
@@ -584,13 +614,11 @@ def process_download_link(
                     zipfilelinks = [z.get_attribute("href") for z in zipfileb]
                 if only_zip_urls is not None:
                     zipfilelinks = [u for u in zipfilelinks if u in only_zip_urls]
-                    log.info("Pre-filtered to %d chosen zip links", len(zipfilelinks))
-                log.info("checkzip=%s, zip buttons found: %d", checkzip, len(zipfilelinks))
-                for z in zipfilelinks:
-                    log.info("Zip button href: %s", z)
+                    log.debug("Pre-filtered to %d chosen zip links", len(zipfilelinks))
+                log.debug("checkzip=%s, zip buttons found: %d", checkzip, len(zipfilelinks))
 
                 if not zipfilelinks and scope in ("all", "zip"):
-                    log.info("No zip buttons, skipping title: %s", downloadlinks)
+                    log.info("✘ no zip buttons, skipping title")
                     continue
 
                 seriesdownloadlink = []
@@ -598,7 +626,7 @@ def process_download_link(
                     By.CSS_SELECTOR,
                     "a.maxbutton-23.maxbutton.maxbutton-episode-links",
                 )
-                log.info("Episode-link buttons (maxbutton-23): %d", len(sdbutton))
+                log.debug("Episode-link buttons (maxbutton-23): %d", len(sdbutton))
                 if is_element_present(
                     driver,
                     By.CSS_SELECTOR,
@@ -613,22 +641,20 @@ def process_download_link(
                     seriesdownloadlink.append(sdb.get_attribute("href"))
                 if only_episode_urls is not None:
                     seriesdownloadlink = [u for u in seriesdownloadlink if u in only_episode_urls]
-                    log.info("Pre-filtered to %d chosen episode links", len(seriesdownloadlink))
-                log.info("Series download links collected: %d", len(seriesdownloadlink))
-                for s in seriesdownloadlink:
-                    log.info("Series link: %s", s)
+                    log.debug("Pre-filtered to %d chosen episode links", len(seriesdownloadlink))
+                log.debug("Series download links collected: %d", len(seriesdownloadlink))
 
                 captions = []
                 allepidirectlinks = []
                 if scope == "zip":
-                    log.info("Scope is zip-only, skipping episode links")
+                    log.debug("Scope is zip-only, skipping episode links")
                     seriesdownloadlink = []
                 for sd_link in seriesdownloadlink:
                     if sd_link.startswith(f"{MOVIEMOD_BASE_URL}download"):
-                        log.info("Skipping internal download URL: %s", sd_link)
+                        log.debug("Skipping internal download URL: %s", _short(sd_link))
                         continue
                     if not _navigate_with_retry(driver, sd_link):
-                        log.warning("Error loading series link: %s", sd_link)
+                        log.warning("Error loading series link: %s", _short(sd_link))
                         continue
                     # Site dropped the darkmysite_* classes; match episode
                     # anchors by href prefix instead (same filter as before).
@@ -636,22 +662,20 @@ def process_download_link(
                         By.CSS_SELECTOR,
                         "a[href^='https://cloud.unblockedgames.world/?']",
                     )
-                    log.info("Raw episode anchors on page: %d (at %s)", len(epidl), driver.current_url)
+                    log.debug("Raw episode anchors on page: %d (at %s)", len(epidl), _short(driver.current_url))
                     for e in epidl[:10]:
-                        log.info("Raw episode anchor href: %r", e.get_attribute("href"))
+                        log.debug("Raw episode anchor href: %r", e.get_attribute("href"))
                     episodedownloadlink = [
                         href
                         for href in (e.get_attribute("href") for e in epidl)
                         if href
                     ]
-                    log.info(
-                        "Episode downloads found: %d (after cloud-link filter)", len(episodedownloadlink)
-                    )
+                    log.debug("Episode downloads found: %d", len(episodedownloadlink))
                     if scope == "specific" and episode_indices is not None:
                         episodedownloadlink = [
                             u for i, u in enumerate(episodedownloadlink) if i in episode_indices
                         ]
-                        log.info("Specific-episode filter: %d links left", len(episodedownloadlink))
+                        log.debug("Specific-episode filter: %d links left", len(episodedownloadlink))
 
                     if ongoingseries:
                         allscrapedepisodes.extend(episodedownloadlink)
@@ -669,21 +693,13 @@ def process_download_link(
                 if ongoingseries:
                     ongoingseriesepilist[checker] = [allscrapedepisodes]
 
-                log.info("Series totals: %d direct links, %d caption blocks", len(allepidirectlinks), len(captions))
-                if allepidirectlinks:
-                    log.info(
-                        "All episode direct links: %s",
-                        "\n".join(allepidirectlinks),
-                    )
-                else:
-                    log.info("No episode direct links, skipping series DB insert")
-
+                series_row = None
                 if allepidirectlinks:
                     final_captions = "".join(captions)
-                    log.info("Captions:\n%s", final_captions)
+                    log.debug("Captions:\n%s", final_captions)
                     conn = get_connection(DB_PARAMS)
                     try:
-                        insert_series(
+                        series_row = insert_series(
                             conn,
                             imagesourceurl,
                             movie_descrp,
@@ -698,22 +714,21 @@ def process_download_link(
                                 insert_ongoing(conn, key, nested_str)
                     finally:
                         conn.close()
+                    log.info("✓ series #%s · %d episodes", series_row, len(allepidirectlinks))
+                else:
+                    log.debug("No episode direct links, skipping series DB insert")
 
+                zip_row, zip_links = None, []
                 if checkzip and scope in ("all", "zip"):
-                    log.info("Checking for zip files")
                     zip_links, zip_captions, zip_unbroken = _process_zip_download(
                         driver, zipfilelinks, downloadlinks
                     )
-                    log.info("Zip totals: %d links, %d captions, unbroken=%s",
-                             len(zip_links), len(zip_captions), zip_unbroken)
-                    if not zip_unbroken:
-                        log.info("Zip produced no unbroken link, skipping zip DB insert")
+                    log.debug("Zip totals: %d links, %d captions, unbroken=%s",
+                              len(zip_links), len(zip_captions), zip_unbroken)
                     if zip_unbroken:
                         fullcaption = movie_descrp + "".join(zip_captions)
-                        log.info(fullcaption)
+                        log.debug("Full zip caption:\n%s", fullcaption)
                         allzdirectlinks = "\n".join(zip_links)
-                        if allzdirectlinks:
-                            log.info("All zip file links: %s", allzdirectlinks)
 
                         if STAR not in fullcaption:
                             notify_no_season(
@@ -725,9 +740,21 @@ def process_download_link(
 
                         conn = get_connection(DB_PARAMS)
                         try:
-                            insert_zip(conn, imagesourceurl, fullcaption, allzdirectlinks)
+                            zip_row = insert_zip(conn, imagesourceurl, fullcaption, allzdirectlinks)
                         finally:
                             conn.close()
+                        log.info("✓ zip #%s · %d links", zip_row, len(zip_links))
+
+                title_secs = time.time() - title_t0
+                parts = []
+                if allepidirectlinks:
+                    parts.append(f"{len(allepidirectlinks)} episodes (series #{series_row})")
+                if zip_links:
+                    parts.append(f"{len(zip_links)} zip (zip #{zip_row})")
+                summary = ", ".join(parts) if parts else "nothing stored"
+                log.info("✔ %s · %s · %ds", title_name, summary, int(title_secs))
+                for link in allepidirectlinks + zip_links:
+                    log.info("  %s", link)
 
             # ================================================================ #
             # MOVIE path (not series, not anime)                               #
@@ -742,7 +769,7 @@ def process_download_link(
                     buttonlinks = [b.get_attribute("href") for b in downloadbutton]
                     if only_button_urls is not None:
                         buttonlinks = [u for u in buttonlinks if u in only_button_urls]
-                        log.info("Pre-filtered to %d chosen buttons", len(buttonlinks))
+                        log.debug("Pre-filtered to %d chosen buttons", len(buttonlinks))
 
                     mov_links, mov_caption, mov_unbroken = _process_movie_download(
                         driver, buttonlinks
@@ -750,22 +777,32 @@ def process_download_link(
 
                     if mov_unbroken:
                         allmdirectlinks = "\n".join(mov_links)
-                        if allmdirectlinks:
-                            log.info(allmdirectlinks)
 
                         final_caption = movie_descrp + f"\n{STAR}" + mov_caption
                         all_captions = final_caption
 
                         conn = get_connection(DB_PARAMS)
                         try:
-                            insert_movie(conn, imagesourceurl, all_captions, allmdirectlinks)
+                            movie_row = insert_movie(conn, imagesourceurl, all_captions, allmdirectlinks)
                         finally:
                             conn.close()
+                        title_secs = time.time() - title_t0
+                        log.info("✔ %s · movie #%s · %d links · %ds",
+                                 title_name, movie_row, len(mov_links), int(title_secs))
+                        for link in mov_links:
+                            log.info("  %s", link)
+                    else:
+                        log.info("✘ %s · no working movie links", title_name)
+
+            elif series and anime:
+                log.debug("Anime series skipped: %s", title_name)
+            elif not series:
+                log.debug("Anime title skipped: %s", title_name)
 
     except TimeoutException:
         pass
     except Exception as e:
-        log.error("Error in process_download_link: %s", e)
+        log.exception("Error in process_download_link")
         notify_error(TELEGRAM_BOT_TOKEN, TELEGRAM_GROUP_CHAT_ID, str(e))
 
 
@@ -847,12 +884,19 @@ def _parse_args(argv=None):
     import argparse
 
     parser = argparse.ArgumentParser(prog="moviescraper", description="MovieMod scraper")
+    common = argparse.ArgumentParser(add_help=False)
+    # SUPPRESS: a subparser default of False would clobber `-v` given
+    # before the subcommand, so the inherited flag only writes when present.
+    common.add_argument("-v", "--verbose", action="store_true", default=argparse.SUPPRESS,
+                        help="show every step (DEBUG); default shows milestones only")
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="show every step (DEBUG); default shows milestones only")
     sub = parser.add_subparsers(dest="cmd")
-    p_pages = sub.add_parser("pages", help="mass scrape a page range")
+    p_pages = sub.add_parser("pages", parents=[common], help="mass scrape a page range")
     p_pages.add_argument("--start", type=int, default=START_PAGE)
     p_pages.add_argument("--end", type=int, default=END_PAGE)
     p_pages.add_argument("-p", "--processes", type=int, default=NUM_PROCESSES)
-    p_search = sub.add_parser("search", help="search and scrape one title")
+    p_search = sub.add_parser("search", parents=[common], help="search and scrape one title")
     p_search.add_argument("query", nargs="?", default=None)
     p_search.add_argument("--pick", type=int, default=None,
                           help="result index (skips arrow menu)")
@@ -876,9 +920,12 @@ def _parse_args(argv=None):
 
 
 if __name__ == "__main__":
+    args = _parse_args()
+    setup_logging(args.verbose)
     print(BANNER)
     log.info("Starting moviemod-scraper")
-    args = _parse_args()
+    log.info("Resolved base URL: %s", MOVIEMOD_BASE_URL)
+    log.info("Loaded %d existing images from DB", len(allimagesrcdb))
 
     if args.cmd is None:
         if sys.stdin.isatty():
