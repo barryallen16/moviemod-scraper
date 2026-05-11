@@ -20,6 +20,17 @@ https://github.com/user-attachments/assets/8ab58885-8724-4059-9793-96fea4f3d916
 - **Telegram Notifications**: Sends real-time updates and error alerts to a Telegram group.
 - **Retry Mechanism**: Handles connection errors and timeouts gracefully.
 - **Headless Mode**: Runs Selenium in headless mode for efficient scraping.
+- **Interactive CLI**: Search a title, pick season / resolution / episodes with arrow menus, scrape only what you chose.
+
+---
+
+## Important: download links expire
+
+The final `driveseed.org/file/…` links are **valid for only a few hours**. The site issues dynamic, per-access download tokens (that's what the long `?sid=…` parameters are), so a link scraped in the morning is dead by the evening.
+
+- **Use links the same day you scrape them.** Don't archive them for later.
+- The MySQL rows are a snapshot of *what was available*, not a permanent mirror — re-scrape a title to refresh its links.
+- If a stored link 404s, just run the title again instead of debugging the scraper.
 
 ---
 
