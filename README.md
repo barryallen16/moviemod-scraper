@@ -39,11 +39,14 @@ The final `driveseed.org/file/…` links are **valid for only a few hours**. The
 ```plaintext
 moviemod-scraper/
 ├── src/
-│   ├── helpers.py   # resolution + season parsing (pure functions)
-│   ├── db.py        # MySQL connection + insert helpers
-│   └── notify.py    # Telegram notifications
+│   ├── helpers.py      # resolution + season parsing (pure functions)
+│   ├── db.py           # MySQL connection + insert helpers
+│   ├── notify.py       # Telegram notifications
+│   ├── introspect.py   # detail-page parsing: qualities, sizes, seasons
+│   └── interactive.py  # search resolver + arrow-menu prompts
 ├── tests/
-│   └── test_helpers.py
+│   ├── test_helpers.py
+│   └── test_introspect.py
 ├── moviescraper.py  # scraping orchestration (Selenium + multiprocessing)
 ├── getCurrentDomain.py
 ├── init.sql         # table schema (database itself comes from MYSQL_DATABASE / DB_NAME)
@@ -59,7 +62,7 @@ moviemod-scraper/
 - Python 3.10+
 - [uv](https://docs.astral.sh/uv/) for deps and runs
 - MySQL Server (or Docker)
-- ChromeDriver on PATH (local runs only; the Docker image installs Chrome + ChromeDriver)
+- Chrome browser (local runs only; the driver is auto-managed by Selenium Manager — see below)
 
 ---
 
@@ -88,7 +91,7 @@ moviemod-scraper/
 4. **Set Up MySQL Database**:
    - Tables are created from [`init.sql`](init.sql). With Docker Compose the database itself is created automatically from `DB_NAME`.
 
-5. **Run the Script**:
+5. **Run the Script**: see [CLI usage](#cli-usage) below. Quickest start:
    ```bash
    uv run moviescraper.py
    ```
@@ -98,6 +101,38 @@ moviemod-scraper/
    uv run pytest -q
    uv run ruff check src/ tests/ moviescraper.py
    ```
+
+---
+
+## CLI usage
+
+Two modes. With no arguments and an interactive terminal you get an arrow-key menu; without a terminal (e.g. `docker compose up`) it mass-scrapes headlessly.
+
+| Command | What it does |
+|---|---|
+| `moviescraper.py` | Menu: mass scrape or search a single title (TTY only; headless falls back to mass) |
+| `moviescraper.py pages --start 1 --end 5 -p 2` | Mass-scrape a page range (flags override `.env`) |
+| `moviescraper.py search "last of us"` | Interactive: pick title → season → what to fetch → resolution (sizes shown) |
+| `moviescraper.py search "last of us" --pick 0 --season 1 --resolution 720px264` | Same, fully headless (no menus) |
+
+Single-title extras:
+
+| Flag | Values | Meaning |
+|---|---|---|
+| `--pick N` | result index | Skips the title menu |
+| `--season N` | e.g. `1` | Skips the season menu (series only) |
+| `--resolution R` | `480p`, `720p`, `1080p`, `480px264`, `720px264`, `1080px264`, `720pbit`, `1080pbit` | Skips the resolution menu |
+| `--scope S` | `all`, `episodes`, `specific`, `zip` | Everything / all episodes / chosen episodes / batch zip only |
+| `--episodes R` | e.g. `1-3,5` | Episode numbers for `--scope specific` |
+| `-v`, `--verbose` | flag | Show every scraping step (DEBUG); default shows milestones only |
+
+What-to-fetch menu (series): `Everything (episodes + zip)` · `All episodes` · `Specific episodes` · `Zip file only`. Movies skip the season/scope menus — just resolution. Only the chosen variant goes through the browser; results land in MySQL and Telegram as usual, and the final links print at the end.
+
+> **TTY note:** arrow menus need a real terminal. Under Docker use `docker compose run` (not `up`):
+> ```bash
+> docker compose run --rm scraper .venv/bin/python moviescraper.py search "last of us"
+> ```
+> Git Bash users: prefix with `winpty` if the menu doesn't render.
 
 ---
 
@@ -124,8 +159,7 @@ docker compose up --build
   - `website_type`: `hollywood` or `bollywood` (used to resolve the current domain).
 
 - **ChromeDriver**:
-  - Local runs: ensure ChromeDriver is installed and added to your system's PATH.
-  - Docker runs: handled by the `Dockerfile`.
+  - Not needed. Selenium Manager downloads the matching driver at runtime, locally and in Docker (Chrome itself is installed by the `Dockerfile`; locally, install the Chrome browser).
 ---
 ## Selenium setup in Cloud
 
