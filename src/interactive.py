@@ -112,13 +112,16 @@ PICKER_STYLE = questionary.Style(
 
 
 def ask_card(cards: list[SearchCard]) -> SearchCard | None:
-    from prompt_toolkit.formatted_text import HTML
-
+    # Choice titles must be str or list[(style, text)] — prompt_toolkit
+    # HTML objects crash the renderer, so colors go through style classes.
     choices = []
     for c in cards:
         kind = "series" if c.is_series else "movie"
         choices.append(
-            questionary.Choice(title=HTML(f"{c.title[:90]} <{kind}>({kind})</{kind}>"), value=c)
+            questionary.Choice(
+                title=[("", f"{c.title[:90]} "), (f"class:{kind}", f"({kind})")],
+                value=c,
+            )
         )
     return questionary.select(
         "Pick a title (↑↓ + Enter):", choices=choices, style=PICKER_STYLE
