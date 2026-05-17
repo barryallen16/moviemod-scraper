@@ -540,6 +540,7 @@ def process_download_link(
     only_button_urls=None,
     scope="all",
     episode_indices=None,
+    skip_dedup=False,
 ):
     try:
         driver = webdriver.Chrome(options=chrome_options)
@@ -549,7 +550,8 @@ def process_download_link(
             allscrapedepisodes = []
             downloadlinks = link_queue.get(block=False)
             imagesourceurl = imagesrc.get(block=False)
-            if imagesourceurl in allimagesrcdb:
+            if imagesourceurl in allimagesrcdb and not skip_dedup:
+                log.debug("Already scraped, skipping: %s", _short(imagesourceurl))
                 continue
 
             if not _navigate_with_retry(driver, downloadlinks):
@@ -861,7 +863,11 @@ def run_pages(start_page, end_page, num_processes):
 
 
 def run_single(req):
-    """Process one SingleRequest through the phase-2 pipeline (single worker)."""
+    """Process one SingleRequest through the phase-2 pipeline (single worker).
+
+    Explicitly requested titles always run: the already-scraped guard is a
+    mass-mode optimization, and stored links expire within hours anyway.
+    """
     link_queue = multiprocessing.Queue()
     link_queue.put(req.post_url)
     imagesrc_queue = multiprocessing.Queue()
@@ -873,7 +879,7 @@ def run_single(req):
         0, imagesrc_queue, link_queue, allongoing, chrome_options,
         only_episode_urls=req.episode_urls, only_zip_urls=req.zip_urls,
         only_button_urls=req.button_urls, scope=req.scope,
-        episode_indices=req.episode_indices,
+        episode_indices=req.episode_indices, skip_dedup=True,
     )
     total_time = time.time() - start_time
     log.info("Single-title run done in %.1f seconds", total_time)
