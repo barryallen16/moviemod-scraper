@@ -35,3 +35,13 @@ def notify_no_season(bot_token: str, group_chat_id: str, description: str, links
     send_telegram_message(
         bot_token, group_chat_id, f"no season mentioned : {description}\n{links}"
     )
+
+
+def notify_links(
+    bot_token: str, group_chat_id: str, title: str, links: list[str]
+) -> None:
+    """Send final download links to Telegram."""
+    if not links:
+        return
+    send_telegram_message(bot_token, group_chat_id, f"{title}\n" + "\n".join(links))
+    log.debug("Sent %d links to Telegram for %s", len(links), title[:60])
