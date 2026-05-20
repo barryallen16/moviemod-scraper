@@ -153,6 +153,8 @@ class SingleRequest:
     ongoing: bool = False
     scope: str = "all"  # all | episodes | specific | zip
     episode_indices: list[int] | None = None  # 0-based, only for scope == "specific"
+    title: str = ""
+    refresh: bool = False  # True = scrape even when stored links exist
 
 
 def parse_season_episode_counts(html: str) -> dict[str, int]:

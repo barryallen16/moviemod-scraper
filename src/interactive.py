@@ -96,6 +96,17 @@ def ask_episode_indices(total: int) -> list[int] | None:
         print("Invalid selection, try something like 1-3,5.")
 
 
+def ask_stored_or_fresh(count: int) -> str | None:
+    """Stored links exist: reuse them or re-scrape? Returns 'stored'/'fresh'."""
+    return questionary.select(
+        f"Found {count} stored links. Use them or re-scrape fresh?",
+        choices=[
+            questionary.Choice("Use stored links (fast)", value="stored"),
+            questionary.Choice("Re-scrape fresh", value="fresh"),
+        ],
+    ).ask()
+
+
 def ask_mode() -> str:
     return questionary.select(
         "What do you want to do?",
@@ -212,6 +223,7 @@ def run_search_flow(
     return SingleRequest(
         post_url=card.url,
         image_url=card.image_url,
+        title=card.title,
         episode_urls={option.episode_url} if option.episode_url and scope != "zip" else None,
         zip_urls={option.zip_url} if option.zip_url and scope in ("all", "zip") else None,
         button_urls={option.button_url} if option.button_url else None,
