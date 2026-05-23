@@ -132,6 +132,60 @@ def parse_movie_options(html: str) -> list[TitleOption]:
     return options
 
 
+_LINK_LINE_RE = re.compile(r"^(.*?)\s+-\s+(https?://\S+)\s*$")
+
+
+def parse_stored_captions(caption_text: str) -> list[tuple[str | None, str | None, str]]:
+    """Split a stored caption block into (season, resolution, url) triples.
+
+    Matches the caption format the scraper writes: `Season N` headers
+    followed by `<resolution> - <url>` lines.
+    """
+    triples: list[tuple[str | None, str | None, str]] = []
+    season: str | None = None
+    for raw_line in (caption_text or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        link_match = _LINK_LINE_RE.match(line)
+        if link_match:
+            label, url = link_match.group(1).strip(), link_match.group(2).strip()
+            triples.append((season, _canonical_quality(label), url))
+            continue
+        season_match = _SEASON_RE.search(line)
+        if season_match:
+            season = season_match.group(1)
+    return triples
+
+
+def filter_stored(
+    stored: list[tuple[str, str, str]],
+    scope: str,
+    season: str | None,
+    quality: str | None,
+    episode_indices: list[int] | None,
+) -> list[str]:
+    """Keep stored links matching the request; [] means re-scrape instead."""
+    triples: list[tuple[str, str | None, str | None, str]] = []
+    for table, captions, _links in stored:
+        for s, r, u in parse_stored_captions(captions):
+            triples.append((table, s, r, u))
+    out: list[str] = []
+    for table, s, r, u in triples:
+        if scope == "zip" and table != "zip":
+            continue
+        if scope in ("episodes", "specific") and table != "series":
+            continue
+        if season and table in ("series", "zip") and s != season:
+            continue
+        if quality and r != quality:
+            continue
+        out.append(u)
+    if scope == "specific" and episode_indices is not None:
+        out = [u for i, u in enumerate(out) if i in episode_indices]
+    return list(dict.fromkeys(out))
+
+
 def seasons_available(options: list[TitleOption]) -> list[str]:
     """Unique seasons in first-seen order."""
     seen: dict[str, None] = {}
@@ -154,6 +208,8 @@ class SingleRequest:
     scope: str = "all"  # all | episodes | specific | zip
     episode_indices: list[int] | None = None  # 0-based, only for scope == "specific"
     title: str = ""
+    season: str | None = None
+    quality: str | None = None
     refresh: bool = False  # True = scrape even when stored links exist
 
 

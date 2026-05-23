@@ -1,8 +1,10 @@
 from src.introspect import (
+    filter_stored,
     parse_episode_selection,
     parse_movie_options,
     parse_season_episode_counts,
     parse_series_options,
+    parse_stored_captions,
     seasons_available,
 )
 
@@ -139,3 +141,94 @@ class TestParseEpisodeSelection:
 
     def test_zero(self):
         assert parse_episode_selection("0", 8) is None
+
+
+SERIES_CAPTION = """\
+Name: The Last Of Us
+Season: 1, 2
+Episodes: 9, 7
+Language: Dual Audio (Hindi-English)
+Release Year: 2023
+\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605
+Season 1
+720p x264 - https://driveseed.org/file/aaa
+720p x264 - https://driveseed.org/file/bbb"""
+
+ZIP_CAPTION = """\
+Name: The Last Of Us
+Season: 1, 2
+\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605
+Season 1
+720p x264 - https://driveseed.org/file/ccc"""
+
+MOVIE_CAPTION = """\
+Name: Flash Point
+Release Year: 2007
+\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605
+720p - https://driveseed.org/file/ddd
+1080p - https://driveseed.org/file/eee"""
+
+
+class TestParseStoredCaptions:
+    def test_series_block(self):
+        triples = parse_stored_captions(SERIES_CAPTION)
+        assert triples == [
+            ("1", "720px264", "https://driveseed.org/file/aaa"),
+            ("1", "720px264", "https://driveseed.org/file/bbb"),
+        ]
+
+    def test_description_lines_ignored(self):
+        triples = parse_stored_captions("Name: X\nSeason: 1, 2\nEpisodes: 9, 7\n")
+        assert triples == []
+
+    def test_movie_block_no_season(self):
+        triples = parse_stored_captions(MOVIE_CAPTION)
+        assert triples == [
+            (None, "720p", "https://driveseed.org/file/ddd"),
+            (None, "1080p", "https://driveseed.org/file/eee"),
+        ]
+
+    def test_empty(self):
+        assert parse_stored_captions("") == []
+
+
+STORED = [
+    ("series", SERIES_CAPTION, "https://driveseed.org/file/aaa\nhttps://driveseed.org/file/bbb"),
+    ("zip", ZIP_CAPTION, "https://driveseed.org/file/ccc"),
+    ("movies", MOVIE_CAPTION, "https://driveseed.org/file/ddd\nhttps://driveseed.org/file/eee"),
+]
+
+
+class TestFilterStored:
+    def test_zip_scope_season_quality(self):
+        assert filter_stored(STORED, "zip", "1", "720px264", None) == [
+            "https://driveseed.org/file/ccc"
+        ]
+
+    def test_wrong_season_yields_empty(self):
+        assert filter_stored(STORED, "zip", "2", "720px264", None) == []
+
+    def test_episodes_scope_excludes_zip_and_movies(self):
+        assert filter_stored(STORED, "episodes", "1", "720px264", None) == [
+            "https://driveseed.org/file/aaa",
+            "https://driveseed.org/file/bbb",
+        ]
+
+    def test_specific_indices(self):
+        assert filter_stored(STORED, "specific", "1", "720px264", [1]) == [
+            "https://driveseed.org/file/bbb"
+        ]
+
+    def test_movie_quality_only(self):
+        assert filter_stored(STORED, "all", None, "1080p", None) == [
+            "https://driveseed.org/file/eee"
+        ]
+
+    def test_all_scope_no_filters(self):
+        assert filter_stored(STORED, "all", None, None, None) == [
+            "https://driveseed.org/file/aaa",
+            "https://driveseed.org/file/bbb",
+            "https://driveseed.org/file/ccc",
+            "https://driveseed.org/file/ddd",
+            "https://driveseed.org/file/eee",
+        ]
