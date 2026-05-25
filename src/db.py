@@ -26,28 +26,29 @@ def load_existing_images(connection: mysql.connector.MySQLConnection) -> list[st
 
 def fetch_stored_links(
     connection: mysql.connector.MySQLConnection, image_url: str
-) -> list[str]:
-    """Fetch final download links already stored for a poster image.
+) -> list[tuple[str, str, str]]:
+    """Fetch stored rows for a poster image as (table, captions, links) triples.
 
-    Returns one entry per stored row, each a newline-joined link block.
+    `captions` is the human-readable column (series.links, movies.caption,
+    zip.links), `links` the newline-joined direct links (org_links).
     Empty when the title was never scraped.
     """
     cursor = connection.cursor()
-    blocks: list[str] = []
-    for table, column in (
-        ("series", "org_links"),
-        ("movies", "org_links"),
-        ("zip", "org_links"),
+    rows: list[tuple[str, str, str]] = []
+    for table, caption_column in (
+        ("series", "links"),
+        ("movies", "caption"),
+        ("zip", "links"),
     ):
         cursor.execute(
-            f"SELECT {column} FROM {table} WHERE image_url = %s",  # noqa: S608
+            f"SELECT {caption_column}, org_links FROM {table} WHERE image_url = %s",  # noqa: S608
             (image_url,),
         )
-        for row in cursor.fetchall():
-            if row[0]:
-                blocks.append(row[0])
+        for captions, links in cursor.fetchall():
+            if links:
+                rows.append((table, captions or "", links))
     cursor.close()
-    return blocks
+    return rows
 
 
 def insert_series(

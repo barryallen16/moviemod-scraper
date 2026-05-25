@@ -224,6 +224,8 @@ def run_search_flow(
         post_url=card.url,
         image_url=card.image_url,
         title=card.title,
+        season=season if card.is_series else None,
+        quality=option.quality,
         episode_urls={option.episode_url} if option.episode_url and scope != "zip" else None,
         zip_urls={option.zip_url} if option.zip_url and scope in ("all", "zip") else None,
         button_urls={option.button_url} if option.button_url else None,

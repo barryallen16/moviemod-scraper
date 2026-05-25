@@ -25,6 +25,7 @@ from src.db import (
     load_existing_images,
 )
 from src.helpers import detect_resolution, parse_season
+from src.introspect import filter_stored
 from src.notify import notify_complete, notify_error, notify_links, notify_no_season
 
 load_dotenv()
@@ -878,12 +879,17 @@ def run_single(req):
     if not req.refresh:
         conn = get_connection(DB_PARAMS)
         try:
-            blocks = fetch_stored_links(conn, req.image_url)
+            stored = fetch_stored_links(conn, req.image_url)
         finally:
             conn.close()
-        links = list(dict.fromkeys(
-            line.strip() for b in blocks for line in b.splitlines() if line.strip()
-        ))
+        links = filter_stored(
+            stored, req.scope, req.season, req.quality, req.episode_indices
+        )
+        if not links and stored:
+            log.info(
+                "Stored links don't cover this request (scope=%s season=%s quality=%s), scraping fresh",
+                req.scope, req.season, req.quality,
+            )
         if links:
             use_stored = True
             if sys.stdin.isatty():
