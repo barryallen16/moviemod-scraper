@@ -133,6 +133,7 @@ def parse_movie_options(html: str) -> list[TitleOption]:
 
 
 _LINK_LINE_RE = re.compile(r"^(.*?)\s+-\s+(https?://\S+)\s*$")
+_BASE_ONLY_RE = re.compile(r"^(\d+p)")
 
 
 def parse_stored_captions(caption_text: str) -> list[tuple[str | None, str | None, str]]:
@@ -158,19 +159,45 @@ def parse_stored_captions(caption_text: str) -> list[tuple[str | None, str | Non
     return triples
 
 
-def filter_stored(
+def _collect_triples(
     stored: list[tuple[str, str, str]],
-    scope: str,
-    season: str | None,
-    quality: str | None,
-    episode_indices: list[int] | None,
-) -> list[str]:
-    """Keep stored links matching the request; [] means re-scrape instead."""
+) -> list[tuple[str, str | None, str | None, str]]:
+    """Flatten stored rows into (table, season, resolution, url) triples."""
     triples: list[tuple[str, str | None, str | None, str]] = []
     for table, captions, _links in stored:
         for s, r, u in parse_stored_captions(captions):
             triples.append((table, s, r, u))
+    return triples
+
+
+def _base_label(quality: str | None) -> str | None:
+    """Strip codec/bit suffixes: 720px264 -> 720p. None stays None."""
+    if not quality:
+        return None
+    m = _BASE_ONLY_RE.match(quality)
+    return m.group(1) if m else quality
+
+
+def summarize_stored(stored: list[tuple[str, str, str]]) -> str:
+    """One-line inventory of what's stored, for mismatch diagnostics."""
+    seen: dict[str, int] = {}
+    for table, s, r, _u in _collect_triples(stored):
+        key = f"{table}/S{s or '?'}:{r or '?'}"
+        seen[key] = seen.get(key, 0) + 1
+    if not seen:
+        return "no parseable stored variants"
+    return "; ".join(f"{k} x{n}" for k, n in seen.items())
+
+
+def _match_triples(
+    triples: list[tuple[str, str | None, str | None, str]],
+    scope: str,
+    season: str | None,
+    quality: str | None,
+    relaxed_quality: bool,
+) -> list[str]:
     out: list[str] = []
+    want_base = _base_label(quality)
     for table, s, r, u in triples:
         if scope == "zip" and table != "zip":
             continue
@@ -178,9 +205,44 @@ def filter_stored(
             continue
         if season and table in ("series", "zip") and s != season:
             continue
-        if quality and r != quality:
-            continue
+        if quality:
+            if relaxed_quality:
+                if _base_label(r) != want_base:
+                    continue
+            elif r != quality:
+                continue
         out.append(u)
+    return out
+
+
+def filter_stored(
+    stored: list[tuple[str, str, str]],
+    scope: str,
+    season: str | None,
+    quality: str | None,
+    episode_indices: list[int] | None,
+) -> list[str]:
+    """Keep stored links exactly matching the request; [] means look further."""
+    out = _match_triples(_collect_triples(stored), scope, season, quality, False)
+    if scope == "specific" and episode_indices is not None:
+        out = [u for i, u in enumerate(out) if i in episode_indices]
+    return list(dict.fromkeys(out))
+
+
+def filter_stored_relaxed(
+    stored: list[tuple[str, str, str]],
+    scope: str,
+    season: str | None,
+    quality: str | None,
+    episode_indices: list[int] | None,
+) -> list[str]:
+    """Same as filter_stored but quality matches on base resolution only.
+
+    Covers label disagreements between the detail page (e.g. 720p x264)
+    and the driveseed filename (e.g. plain 720p). Season and scope stay
+    strict — a wrong season is never an acceptable substitute.
+    """
+    out = _match_triples(_collect_triples(stored), scope, season, quality, True)
     if scope == "specific" and episode_indices is not None:
         out = [u for i, u in enumerate(out) if i in episode_indices]
     return list(dict.fromkeys(out))

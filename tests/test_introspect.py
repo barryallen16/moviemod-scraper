@@ -1,11 +1,13 @@
 from src.introspect import (
     filter_stored,
+    filter_stored_relaxed,
     parse_episode_selection,
     parse_movie_options,
     parse_season_episode_counts,
     parse_series_options,
     parse_stored_captions,
     seasons_available,
+    summarize_stored,
 )
 
 SERIES_HTML = """
@@ -232,3 +234,43 @@ class TestFilterStored:
             "https://driveseed.org/file/ddd",
             "https://driveseed.org/file/eee",
         ]
+
+
+PLAIN480_CAPTION = """\
+Name: The Last Of Us
+Season: 1, 2
+\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605\u2605
+Season 2
+480p - https://driveseed.org/file/plain480
+"""
+
+
+class TestFilterStoredRelaxed:
+    def test_codec_relaxation(self):
+        stored = [("zip", PLAIN480_CAPTION, "https://driveseed.org/file/plain480")]
+        assert filter_stored(stored, "zip", "2", "480px264", None) == []
+        assert filter_stored_relaxed(stored, "zip", "2", "480px264", None) == [
+            "https://driveseed.org/file/plain480"
+        ]
+
+    def test_season_stays_strict(self):
+        stored = [("zip", PLAIN480_CAPTION, "https://driveseed.org/file/plain480")]
+        assert filter_stored_relaxed(stored, "zip", "1", "480px264", None) == []
+
+    def test_scope_stays_strict(self):
+        stored = [("zip", PLAIN480_CAPTION, "https://driveseed.org/file/plain480")]
+        assert filter_stored_relaxed(stored, "episodes", "2", "480p", None) == []
+
+
+class TestSummarizeStored:
+    def test_inventory_line(self):
+        stored = [
+            ("series", SERIES_CAPTION, "aaa"),
+            ("zip", ZIP_CAPTION, "ccc"),
+        ]
+        summary = summarize_stored(stored)
+        assert "series/S1:720px264 x2" in summary
+        assert "zip/S1:720px264 x1" in summary
+
+    def test_empty(self):
+        assert summarize_stored([]) == "no parseable stored variants"
