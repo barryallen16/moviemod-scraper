@@ -16,6 +16,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 from getCurrentDomain import getCurrentDomainName
 from src.db import (
+    delete_rows_by_image,
     fetch_stored_links,
     get_connection,
     insert_movie,
@@ -25,7 +26,8 @@ from src.db import (
     load_existing_images,
 )
 from src.helpers import detect_resolution, parse_season
-from src.introspect import filter_stored
+from src.introspect import filter_stored, filter_stored_relaxed, summarize_stored
+from src.linkcheck import partition_alive
 from src.notify import notify_complete, notify_error, notify_links, notify_no_season
 
 load_dotenv()
@@ -886,10 +888,37 @@ def run_single(req):
             stored, req.scope, req.season, req.quality, req.episode_indices
         )
         if not links and stored:
-            log.info(
-                "Stored links don't cover this request (scope=%s season=%s quality=%s), scraping fresh",
-                req.scope, req.season, req.quality,
+            relaxed = filter_stored_relaxed(
+                stored, req.scope, req.season, req.quality, req.episode_indices
             )
+            if relaxed:
+                log.info(
+                    "No exact stored match; serving %d base-resolution matches (codec differs)",
+                    len(relaxed),
+                )
+                links = relaxed
+            else:
+                log.info(
+                    "Stored links don't cover this request (scope=%s season=%s quality=%s; stored: %s), scraping fresh",
+                    req.scope, req.season, req.quality, summarize_stored(stored),
+                )
+        else:
+            alive, dead, unknown = partition_alive(links)
+            for url in dead:
+                log.info("Dead stored link: %s", _short(url))
+            if alive:
+                links = alive
+            elif dead and not unknown:
+                conn = get_connection(DB_PARAMS)
+                try:
+                    delete_rows_by_image(conn, req.image_url)
+                finally:
+                    conn.close()
+                log.info("All stored links dead, rows purged, scraping fresh")
+                links = []
+            else:
+                log.info("Could not verify stored links, scraping fresh to be safe")
+                links = []
         if links:
             use_stored = True
             if sys.stdin.isatty():
