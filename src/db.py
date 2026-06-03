@@ -24,6 +24,19 @@ def load_existing_images(connection: mysql.connector.MySQLConnection) -> list[st
     return images
 
 
+def delete_rows_by_image(connection: mysql.connector.MySQLConnection, image_url: str) -> int:
+    """Delete every stored row for a poster image. Returns rows removed."""
+    cursor = connection.cursor()
+    removed = 0
+    for table in ("series", "movies", "zip"):
+        cursor.execute(f"DELETE FROM {table} WHERE image_url = %s", (image_url,))  # noqa: S608
+        removed += cursor.rowcount
+    connection.commit()
+    cursor.close()
+    log.info("Deleted %d dead rows for %s", removed, image_url[:80])
+    return removed
+
+
 def fetch_stored_links(
     connection: mysql.connector.MySQLConnection, image_url: str
 ) -> list[tuple[str, str, str]]:
