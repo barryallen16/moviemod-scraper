@@ -902,7 +902,7 @@ def run_single(req):
                     "Stored links don't cover this request (scope=%s season=%s quality=%s; stored: %s), scraping fresh",
                     req.scope, req.season, req.quality, summarize_stored(stored),
                 )
-        else:
+        if links:
             alive, dead, unknown = partition_alive(links)
             for url in dead:
                 log.info("Dead stored link: %s", _short(url))
