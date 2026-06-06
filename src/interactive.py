@@ -74,21 +74,23 @@ def fetch_options(card: SearchCard) -> list[TitleOption]:
 
 
 def ask_scope() -> str | None:
-    return questionary.select(
+    picked = questionary.select(
         "What to fetch?",
         choices=[
             questionary.Choice("Everything (episodes + zip)", value="all"),
             questionary.Choice("All episodes", value="episodes"),
             questionary.Choice("Specific episodes", value="specific"),
             questionary.Choice("Zip file only", value="zip"),
+            _quit_choice(),
         ],
     ).ask()
+    return None if picked in (None, "quit") else picked
 
 
 def ask_episode_indices(total: int) -> list[int] | None:
     while True:
-        raw = questionary.text(f"Episode numbers 1-{total} (e.g. 1-3,5):").ask()
-        if raw is None:
+        raw = questionary.text(f"Episode numbers 1-{total} (e.g. 1-3,5, q to quit):").ask()
+        if raw is None or raw.strip().lower() == "q":
             return None
         indices = parse_episode_selection(raw, total)
         if indices is not None:
@@ -98,19 +100,26 @@ def ask_episode_indices(total: int) -> list[int] | None:
 
 def ask_stored_or_fresh(count: int) -> str | None:
     """Stored links exist: reuse them or re-scrape? Returns 'stored'/'fresh'."""
-    return questionary.select(
+    picked = questionary.select(
         f"Found {count} stored links. Use them or re-scrape fresh?",
         choices=[
             questionary.Choice("Use stored links (fast)", value="stored"),
             questionary.Choice("Re-scrape fresh", value="fresh"),
+            _quit_choice(),
         ],
     ).ask()
+    return None if picked in (None, "quit") else picked
 
 
-def ask_mode() -> str:
+def _quit_choice() -> questionary.Choice:
+    """Explicit Quit row: arrows to it or press q. Value None means exit."""
+    return questionary.Choice("Quit (q)", value="quit", shortcut_key="q")
+
+
+def ask_mode() -> str | None:
     return questionary.select(
         "What do you want to do?",
-        choices=["mass scrape (pages)", "search single title"],
+        choices=["mass scrape (pages)", "search single title", _quit_choice()],
     ).ask()
 
 
@@ -134,16 +143,20 @@ def ask_card(cards: list[SearchCard]) -> SearchCard | None:
                 value=c,
             )
         )
-    return questionary.select(
-        "Pick a title (↑↓ + Enter):", choices=choices, style=PICKER_STYLE
+    choices.append(_quit_choice())
+    picked = questionary.select(
+        "Pick a title (arrows + Enter, q to quit):", choices=choices, style=PICKER_STYLE
     ).ask()
+    return None if picked in (None, "quit") else picked
 
 
 def ask_option(options: list[TitleOption], what: str) -> TitleOption | None:
-    return questionary.select(
-        f"Pick {what} (↑↓ + Enter):",
-        choices=[questionary.Choice(o.display, value=o) for o in options],
+    picked = questionary.select(
+        f"Pick {what} (arrows + Enter, q to quit):",
+        choices=[questionary.Choice(o.display, value=o) for o in options]
+        + [_quit_choice()],
     ).ask()
+    return None if picked in (None, "quit") else picked
 
 
 def run_search_flow(
@@ -157,8 +170,8 @@ def run_search_flow(
 ) -> SingleRequest | None:
     """Search → pick title → season → scope → resolution. Returns a SingleRequest."""
     if not query:
-        query = questionary.text("Movie or series name:").ask()
-        if not query:
+        query = questionary.text("Movie or series name (q to quit):").ask()
+        if not query or query.strip().lower() == "q":
             return None
     cards = search_cards(base_url, query)
     if not cards:
@@ -176,11 +189,16 @@ def run_search_flow(
     if card.is_series:
         seasons = seasons_available(options)
         if season is None:
-            season = seasons[0] if len(seasons) == 1 else questionary.select(
-                "Pick season (↑↓ + Enter):", choices=seasons
-            ).ask()
-            if season is None:
-                return None
+            if len(seasons) == 1:
+                season = seasons[0]
+            else:
+                picked_season = questionary.select(
+                    "Pick season (arrows + Enter, q to quit):",
+                    choices=seasons + [_quit_choice()],
+                ).ask()
+                if picked_season in (None, "quit"):
+                    return None
+                season = picked_season
         candidates = [o for o in options if o.season == season]
         if not candidates:
             log.info("No variants for season %r (have: %s)", season, seasons)

@@ -1009,6 +1009,9 @@ if __name__ == "__main__":
             from src import interactive as _ix
 
             mode = _ix.ask_mode()
+            if mode in (None, "quit"):
+                log.info("Goodbye")
+                sys.exit(0)
             args.cmd = "search" if mode.startswith("search") else "pages"
         else:
             args.cmd = "pages"  # headless (e.g. compose up): mass scrape, no prompts
