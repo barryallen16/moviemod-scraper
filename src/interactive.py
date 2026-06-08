@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import logging
+import multiprocessing
+import sys
+import threading
 from dataclasses import dataclass
 
 import questionary
@@ -114,6 +117,33 @@ def ask_stored_or_fresh(count: int) -> str | None:
 def _quit_choice() -> questionary.Choice:
     """Explicit Quit row: arrows to it or press q. Value None means exit."""
     return questionary.Choice("Quit (q)", value="quit", shortcut_key="q")
+
+
+def start_quit_listener():
+    """Watch stdin for q + Enter; returns a shared event set on quit.
+
+    Daemon thread, TTY only. A multiprocessing.Event so forked Selenium
+    workers see it too. Never fires headless.
+    """
+    quit_event = multiprocessing.Event()
+    if not sys.stdin.isatty():
+        return quit_event
+
+    def watch():
+        while True:
+            try:
+                line = sys.stdin.readline()
+            except (EOFError, OSError):
+                break
+            if not line:
+                break  # EOF: stdin closed, q will never come
+            if line.strip().lower() == "q":
+                print("Quit requested, stopping after the current item...")
+                quit_event.set()
+                break
+
+    threading.Thread(target=watch, daemon=True).start()
+    return quit_event
 
 
 def ask_mode() -> str | None:

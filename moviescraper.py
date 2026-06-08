@@ -62,6 +62,10 @@ def _ep_tag(name_text, fallback):
     m = _EP_RE.search(name_text or "")
     return f"s{m.group(1)}e{m.group(2)}" if m else fallback
 
+
+def _quit_requested(quit_event):
+    return quit_event is not None and quit_event.is_set()
+
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_GROUP_CHAT_ID = os.getenv("TELEGRAM_GROUP_CHAT_ID")
 DB_HOST = os.getenv("DB_HOST")
@@ -116,7 +120,7 @@ _conn.close()
 
 # Page scraping
 @retry((ConnectionError, Timeout, TimeoutException), tries=10, delay=2, backoff=2)
-def scraping(start_page, end_page, imagesrc, downloadlinks, allongoing, lock):
+def scraping(start_page, end_page, imagesrc, downloadlinks, allongoing, lock, quit_event=None):
     chrome_options = webdriver.ChromeOptions()
     chrome_options.add_argument("--headless")  # comment this to run in headfull mode
     user_agent = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.92 Mobile Safari/537.36"
@@ -141,6 +145,9 @@ def scraping(start_page, end_page, imagesrc, downloadlinks, allongoing, lock):
     local_allongoing = []
 
     for i in range(start_page, end_page + 1):
+        if _quit_requested(quit_event):
+            log.info("Quit requested, stopping page scrape.")
+            break
         formatted_url = f"{MOVIEMOD_BASE_URL}page/{i}"
         driver.get(formatted_url)
 
@@ -293,7 +300,7 @@ def _detect_resolution_from_page(driver):
 
 
 def _process_episode_download(
-    driver, episodedownloadlink, ongoingseries, allscrapedepisodes
+    driver, episodedownloadlink, ongoingseries, allscrapedepisodes, quit_event=None
 ):
     """Navigate through episode download links and return (direct_links, captions)."""
     allepidirectlinks = []
@@ -303,6 +310,9 @@ def _process_episode_download(
     total = len(episodedownloadlink)
     log.debug("Episode path: %d links to process", total)
     for n, epi_url in enumerate(episodedownloadlink, 1):
+        if _quit_requested(quit_event):
+            log.info("Quit requested, stopping episode list.")
+            break
         tag = f"E{n:02d}/{total}"
         log.info("Resolving %s...", tag)
         if not _navigate_with_retry(driver, epi_url):
@@ -350,7 +360,7 @@ def _process_episode_download(
 
 
 # Zip download path
-def _process_zip_download(driver, zipfilelinks, downloadlinks):
+def _process_zip_download(driver, zipfilelinks, downloadlinks, quit_event=None):
     """Navigate through zip download links and return (direct_links, captions, unbroken)."""
     allzipdirectlinks = []
     captions = []
@@ -360,6 +370,9 @@ def _process_zip_download(driver, zipfilelinks, downloadlinks):
     total = len(zipfilelinks)
     log.debug("Zip path: %d links to process", total)
     for n, zip_url in enumerate(zipfilelinks, 1):
+        if _quit_requested(quit_event):
+            log.info("Quit requested, stopping zip list.")
+            break
         tag = f"ZIP{n}/{total}" if total > 1 else "ZIP"
         log.info("Resolving %s...", tag)
         if zip_url.startswith(f"{MOVIEMOD_BASE_URL}download"):
@@ -436,12 +449,15 @@ def _process_zip_download(driver, zipfilelinks, downloadlinks):
 
 # Movie download path
 
-def _process_movie_download(driver, buttonlinks):
+def _process_movie_download(driver, buttonlinks, quit_event=None):
     """Navigate through movie download buttons and return (direct_links, caption, unbroken)."""
     allmoviedirectlinks = []
     unbrokenlink = False
 
     for btn_url in buttonlinks:
+        if _quit_requested(quit_event):
+            log.info("Quit requested, stopping button list.")
+            break
         if btn_url.startswith(f"{MOVIEMOD_BASE_URL}download"):
             continue
         if is_element_present(
@@ -546,10 +562,11 @@ def process_download_link(
     episode_indices=None,
     skip_dedup=False,
     send_links=False,
+    quit_event=None,
 ):
     try:
         driver = webdriver.Chrome(options=chrome_options)
-        while not link_queue.empty():
+        while not link_queue.empty() and not _quit_requested(quit_event):
             ongoingseries = False
             ongoingseriesepilist = {}
             allscrapedepisodes = []
@@ -657,6 +674,9 @@ def process_download_link(
                     log.debug("Scope is zip-only, skipping episode links")
                     seriesdownloadlink = []
                 for sd_link in seriesdownloadlink:
+                    if _quit_requested(quit_event):
+                        log.info("Quit requested, stopping series links.")
+                        break
                     if sd_link.startswith(f"{MOVIEMOD_BASE_URL}download"):
                         log.debug("Skipping internal download URL: %s", _short(sd_link))
                         continue
@@ -692,6 +712,7 @@ def process_download_link(
                         episodedownloadlink,
                         ongoingseries,
                         allscrapedepisodes,
+                        quit_event,
                     )
                     log.info("Episode batch done: %d links, %d captions", len(ep_links), len(ep_captions))
                     allepidirectlinks.extend(ep_links)
@@ -728,7 +749,7 @@ def process_download_link(
                 zip_row, zip_links = None, []
                 if checkzip and scope in ("all", "zip"):
                     zip_links, zip_captions, zip_unbroken = _process_zip_download(
-                        driver, zipfilelinks, downloadlinks
+                        driver, zipfilelinks, downloadlinks, quit_event
                     )
                     log.debug("Zip totals: %d links, %d captions, unbroken=%s",
                               len(zip_links), len(zip_captions), zip_unbroken)
@@ -782,7 +803,7 @@ def process_download_link(
                         log.debug("Pre-filtered to %d chosen buttons", len(buttonlinks))
 
                     mov_links, mov_caption, mov_unbroken = _process_movie_download(
-                        driver, buttonlinks
+                        driver, buttonlinks, quit_event
                     )
 
                     if mov_unbroken:
@@ -855,7 +876,7 @@ def build_chrome_options():
     return chrome_options
 
 
-def run_pages(start_page, end_page, num_processes):
+def run_pages(start_page, end_page, num_processes, quit_event=None):
     """Phase 1: scrape pages. Returns (images, links, ongoing) manager lists."""
     imagesrc = multiprocessing.Manager().list()
     downloadlinks = multiprocessing.Manager().list()
@@ -863,7 +884,7 @@ def run_pages(start_page, end_page, num_processes):
 
     lock = multiprocessing.Manager().Lock()
     pool = multiprocessing.Pool(processes=num_processes)
-    pool.starmap(scraping, [(start_page, end_page, imagesrc, downloadlinks, allongoing, lock)])
+    pool.starmap(scraping, [(start_page, end_page, imagesrc, downloadlinks, allongoing, lock, quit_event)])
     pool.close()
     pool.join()
 
@@ -936,6 +957,11 @@ def run_single(req):
                     log.info("  %s", link)
                 notify_links(TELEGRAM_BOT_TOKEN, TELEGRAM_GROUP_CHAT_ID, title, links)
                 return
+    from src.interactive import start_quit_listener  # lazy: CLI-only dep
+
+    quit_event = start_quit_listener()
+    if sys.stdin.isatty():
+        print("Press q + Enter anytime to stop after the current item.")
     link_queue = multiprocessing.Queue()
     link_queue.put(req.post_url)
     imagesrc_queue = multiprocessing.Queue()
@@ -948,11 +974,14 @@ def run_single(req):
         only_episode_urls=req.episode_urls, only_zip_urls=req.zip_urls,
         only_button_urls=req.button_urls, scope=req.scope,
         episode_indices=req.episode_indices, skip_dedup=True,
-        send_links=True,
+        send_links=True, quit_event=quit_event,
     )
     total_time = time.time() - start_time
-    log.info("Single-title run done in %.1f seconds", total_time)
-    notify_complete(TELEGRAM_BOT_TOKEN, TELEGRAM_GROUP_CHAT_ID, total_time)
+    if _quit_requested(quit_event):
+        log.info("Quit requested, stopping. Partial results above (if any).")
+    else:
+        log.info("Single-title run done in %.1f seconds", total_time)
+        notify_complete(TELEGRAM_BOT_TOKEN, TELEGRAM_GROUP_CHAT_ID, total_time)
 
 
 def _parse_args(argv=None):
@@ -1034,7 +1063,18 @@ if __name__ == "__main__":
         start_page = getattr(args, "start", START_PAGE)
         end_page = getattr(args, "end", END_PAGE)
 
-        imagesrc, downloadlinks, allongoing = run_pages(start_page, end_page, num_processes)
+        from src.interactive import start_quit_listener  # lazy: CLI-only dep
+
+        quit_event = start_quit_listener()
+        if sys.stdin.isatty():
+            print("Press q + Enter anytime to stop after the current item.")
+
+        imagesrc, downloadlinks, allongoing = run_pages(
+            start_page, end_page, num_processes, quit_event
+        )
+        if _quit_requested(quit_event):
+            log.info("Quit requested, stopping before download phase.")
+            sys.exit(0)
 
         # --- Phase 2: process each download link ---
         chrome_options = build_chrome_options()
@@ -1053,6 +1093,7 @@ if __name__ == "__main__":
             process = multiprocessing.Process(
                 target=process_download_link,
                 args=(i, imagesrc_queue, link_queue, allongoing, chrome_options),
+                kwargs={"quit_event": quit_event},
             )
             processes.append(process)
             process.start()
@@ -1061,6 +1102,9 @@ if __name__ == "__main__":
 
         end_time = time.time()
         total_time = end_time - start_time
-        log.info("Total time taken: %.1f seconds", total_time)
-        notify_complete(TELEGRAM_BOT_TOKEN, TELEGRAM_GROUP_CHAT_ID, total_time)
+        if _quit_requested(quit_event):
+            log.info("Quit requested, stopped early after %.1f seconds.", total_time)
+        else:
+            log.info("Total time taken: %.1f seconds", total_time)
+            notify_complete(TELEGRAM_BOT_TOKEN, TELEGRAM_GROUP_CHAT_ID, total_time)
 
