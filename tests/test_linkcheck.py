@@ -5,45 +5,36 @@ import requests
 from src.linkcheck import check_link, partition_alive
 
 
-def _resp(status, url="https://driveseed.org/file/abc", text=""):
+def _resp(status, text=""):
     from types import SimpleNamespace
 
-    return SimpleNamespace(status_code=status, url=url, text=text)
+    return SimpleNamespace(status_code=status, text=text)
+
+
+LIVE_PAGE = '<html><li class="list-group-item">movie.mkv</li></html>'
+DEAD_PAGE = "<html><h3>404! Page Not Found</h3>The file you are trying to download is no longer available!</html>"
 
 
 class TestCheckLink:
-    def test_head_200_alive(self):
-        with patch("src.linkcheck.requests.head", return_value=_resp(200)):
+    def test_live_page_alive(self):
+        with patch("src.linkcheck.requests.get", return_value=_resp(200, LIVE_PAGE)):
             assert check_link("https://driveseed.org/file/abc") == "alive"
 
-    def test_head_404_dead(self):
-        with patch("src.linkcheck.requests.head", return_value=_resp(404)):
-            assert check_link("https://driveseed.org/file/rrVahJKsju2zqDaqKqXg") == "dead"
+    def test_404_marker_dead(self):
+        with patch("src.linkcheck.requests.get", return_value=_resp(200, DEAD_PAGE)):
+            assert check_link("https://driveseed.org/zfile/bDXuke3VI02Wi9fOtoVR") == "dead"
 
-    def test_head_405_falls_back_to_get_with_marker(self):
-        with (
-            patch("src.linkcheck.requests.head", return_value=_resp(405)),
-            patch(
-                "src.linkcheck.requests.get",
-                return_value=_resp(200, text='<li class="list-group-item">x</li>'),
-            ),
-        ):
-            assert check_link("https://driveseed.org/file/abc") == "alive"
-
-    def test_head_405_get_without_marker_dead(self):
-        with (
-            patch("src.linkcheck.requests.head", return_value=_resp(405)),
-            patch("src.linkcheck.requests.get", return_value=_resp(200, text="<html>gone</html>")),
-        ):
+    def test_status_404_dead(self):
+        with patch("src.linkcheck.requests.get", return_value=_resp(404, "")):
             assert check_link("https://driveseed.org/file/abc") == "dead"
 
-    def test_head_500_unknown(self):
-        with patch("src.linkcheck.requests.head", return_value=_resp(500)):
+    def test_status_500_unknown(self):
+        with patch("src.linkcheck.requests.get", return_value=_resp(500, "")):
             assert check_link("https://driveseed.org/file/abc") == "unknown"
 
     def test_timeout_unknown(self):
         with patch(
-            "src.linkcheck.requests.head", side_effect=requests.Timeout("slow")
+            "src.linkcheck.requests.get", side_effect=requests.Timeout("slow")
         ):
             assert check_link("https://driveseed.org/file/abc") == "unknown"
 
