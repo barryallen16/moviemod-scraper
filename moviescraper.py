@@ -928,35 +928,21 @@ def run_single(req):
             for url in dead:
                 log.info("Dead stored link: %s", _short(url))
             if alive:
-                links = alive
-            elif dead and not unknown:
+                title = req.title or req.post_url
+                log.info("DONE %s | %d stored links (skipped scrape)", title, len(alive))
+                for link in alive:
+                    log.info("  %s", link)
+                notify_links(TELEGRAM_BOT_TOKEN, TELEGRAM_GROUP_CHAT_ID, title, alive)
+                return
+            if dead and not unknown:
                 conn = get_connection(DB_PARAMS)
                 try:
                     delete_rows_by_image(conn, req.image_url)
                 finally:
                     conn.close()
                 log.info("All stored links dead, rows purged, scraping fresh")
-                links = []
             else:
                 log.info("Could not verify stored links, scraping fresh to be safe")
-                links = []
-        if links:
-            use_stored = True
-            if sys.stdin.isatty():
-                from src.interactive import ask_stored_or_fresh
-
-                choice = ask_stored_or_fresh(len(links))
-                if choice is None:
-                    log.info("Nothing selected, exiting")
-                    return
-                use_stored = choice == "stored"
-            if use_stored:
-                title = req.title or req.post_url
-                log.info("DONE %s | %d stored links (skipped scrape)", title, len(links))
-                for link in links:
-                    log.info("  %s", link)
-                notify_links(TELEGRAM_BOT_TOKEN, TELEGRAM_GROUP_CHAT_ID, title, links)
-                return
     from src.interactive import start_quit_listener  # lazy: CLI-only dep
 
     quit_event = start_quit_listener()

@@ -101,19 +101,6 @@ def ask_episode_indices(total: int) -> list[int] | None:
         print("Invalid selection, try something like 1-3,5.")
 
 
-def ask_stored_or_fresh(count: int) -> str | None:
-    """Stored links exist: reuse them or re-scrape? Returns 'stored'/'fresh'."""
-    picked = questionary.select(
-        f"Found {count} stored links. Use them or re-scrape fresh?",
-        choices=[
-            questionary.Choice("Use stored links (fast)", value="stored"),
-            questionary.Choice("Re-scrape fresh", value="fresh"),
-            _quit_choice(),
-        ],
-    ).ask()
-    return None if picked in (None, "quit") else picked
-
-
 def _quit_choice() -> questionary.Choice:
     """Explicit Quit row: arrows to it or press q. Value None means exit."""
     return questionary.Choice("Quit (q)", value="quit", shortcut_key="q")
