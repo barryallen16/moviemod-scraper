@@ -38,6 +38,18 @@ class TestCheckLink:
         ):
             assert check_link("https://driveseed.org/file/abc") == "unknown"
 
+    def test_retry_then_alive(self):
+        with patch(
+            "src.linkcheck.requests.get",
+            side_effect=[requests.Timeout("slow"), _resp(200, LIVE_PAGE)],
+        ):
+            assert check_link("https://driveseed.org/file/abc") == "alive"
+
+    def test_sends_browser_headers(self):
+        with patch("src.linkcheck.requests.get", return_value=_resp(200, LIVE_PAGE)) as m:
+            check_link("https://driveseed.org/file/abc")
+            assert "Chrome" in m.call_args.kwargs["headers"]["User-Agent"]
+
 
 class TestPartitionAlive:
     def test_groups_verdicts(self):
