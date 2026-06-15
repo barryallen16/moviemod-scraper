@@ -6,7 +6,8 @@ services:
     env_file:
       - .env
     depends_on:
-      - db
+      db:
+        condition: service_healthy
   db:
     image: mysql:8.0
     environment:
@@ -19,6 +20,12 @@ services:
     volumes:
       - ./init.sql:/docker-entrypoint-intidb.d/init.sql
       - mysqldata:/var/lib/mysql
+    healthcheck: 
+      test: ["CMD-SHELL", "mysql -h localhost -u root -p$$MYSQL_ROOT_PASSWORD -e 'SELECT 1'"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
 volumes:
   mysqldata:
