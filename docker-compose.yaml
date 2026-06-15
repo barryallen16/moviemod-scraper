@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   scraper:
     build: .
@@ -7,12 +5,14 @@ services:
       - .env
     depends_on:
       db:
-        condition: service_healthy
+        condition: service_healthy  
+    shm_size: '2gb'
+
   db:
     image: mysql:8.0
     environment:
       MYSQL_ROOT_PASSWORD: supersecretpassword
-      MYSQL_DATABASE: moviesmod
+      MYSQL_DATABASE: test_db
       MYSQL_USER: myuser
       MYSQL_PASSWORD: mypassword
     ports:
