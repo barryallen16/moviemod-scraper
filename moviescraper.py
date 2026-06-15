@@ -849,11 +849,11 @@ def process_download_link(thread_id, imagesrc, link_queue, allongoing, chrome_op
                         final_captions = "".join(captions)
                         print(final_captions)
                         db_params = {
-                            "host": "localhost",
-                            "user": "root",
-                            "password": "1611",
-                            "database": "test_db",
-                        }
+                                "host": DB_HOST,
+                                "user": DB_USER,
+                                "password": DB_PASSWORD,
+                                "database": DB_NAME,
+                            }
 
                         # Connect to MySQL server
                         connection = mysql.connector.connect(**db_params)
