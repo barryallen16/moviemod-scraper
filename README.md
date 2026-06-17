@@ -116,18 +116,24 @@ https://github.com/user-attachments/assets/8ab58885-8724-4059-9793-96fea4f3d916
 - **ChromeDriver**:
   - Ensure ChromeDriver is installed and added to your system's PATH.
 ---
+## Cloud setup 
 
-## Contributing
-
-Contributions are welcome! Please follow these steps:
-
-1. Fork the repository.
-2. Create a new branch for your feature or bugfix.
-3. Commit your changes and push them to your fork.
-4. Submit a pull request.
+```bash
+sudo apt update
+wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+sudo dpkg -i google-chrome-stable_current_amd64.deb
+sudo apt install -y -f
+wget https://storage.googleapis.com/chrome-for-testing-public/149.0.7827.155/linux64/chromedriver-linux64.zip
+unzip chromedriver-linux64.zip
+sudo mv  chromedriver-linux64/chromedriver /usr/local/bin/
+google-chrome --version
+chromedriver --version
+sudo apt install python3-pip
+sudo apt install git
+pip install selenium
+```
 
 ---
-
 ## License
 
 This project is licensed under the **GNU General Public License v3.0**. See the [LICENSE](LICENSE) file for details.
