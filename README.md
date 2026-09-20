@@ -2,6 +2,8 @@
 
 A Python-based web scraper for extracting movie and series details, including download links and images, from the [MoviesMod](https://moviesmod.red/) website. The project uses **Selenium** for web scraping, **multiprocessing** for parallel execution, **MySQL** for data storage, and **Telegram** for real-time notifications.
 
+![Interactive single-title run: search, pick season and resolution, get the final link](docs/cli-demo.png)
+
 
 ---
 
@@ -107,8 +109,6 @@ moviemod-scraper/
 ## CLI usage
 
 Two modes. With no arguments and an interactive terminal you get an arrow-key menu; without a terminal (e.g. `docker compose up`) it mass-scrapes headlessly.
-
-![Interactive single-title run: search, pick season and resolution, get the final link](docs/cli-demo.png)
 
 | Command | What it does |
 |---|---|
