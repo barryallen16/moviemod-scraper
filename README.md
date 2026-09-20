@@ -108,6 +108,8 @@ moviemod-scraper/
 
 Two modes. With no arguments and an interactive terminal you get an arrow-key menu; without a terminal (e.g. `docker compose up`) it mass-scrapes headlessly.
 
+![Interactive single-title run: search, pick season and resolution, get the final link](docs/cli-demo.png)
+
 | Command | What it does |
 |---|---|
 | `moviescraper.py` | Menu: mass scrape or search a single title (TTY only; headless falls back to mass) |
