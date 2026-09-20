@@ -39,13 +39,18 @@ The final `driveseed.org/file/…` links are **valid for only a few hours**. The
 moviemod-scraper/
 ├── src/
 │   ├── helpers.py      # resolution + season parsing (pure functions)
-│   ├── db.py           # MySQL connection + insert helpers
+│   ├── db.py           # MySQL connection + insert/fetch helpers
 │   ├── notify.py       # Telegram notifications
 │   ├── introspect.py   # detail-page parsing: qualities, sizes, seasons
-│   └── interactive.py  # search resolver + arrow-menu prompts
+│   ├── interactive.py  # search resolver + arrow-menu prompts
+│   └── linkcheck.py    # stored-link liveness validation
 ├── tests/
 │   ├── test_helpers.py
-│   └── test_introspect.py
+│   ├── test_introspect.py
+│   ├── test_linkcheck.py
+│   └── test_interactive.py
+├── docs/
+│   └── cli-demo.png
 ├── moviescraper.py  # scraping orchestration (Selenium + multiprocessing)
 ├── getCurrentDomain.py
 ├── init.sql         # table schema (database itself comes from MYSQL_DATABASE / DB_NAME)
@@ -123,15 +128,19 @@ Single-title extras:
 | `--resolution R` | `480p`, `720p`, `1080p`, `480px264`, `720px264`, `1080px264`, `720pbit`, `1080pbit` | Skips the resolution menu |
 | `--scope S` | `all`, `episodes`, `specific`, `zip` | Everything / all episodes / chosen episodes / batch zip only |
 | `--episodes R` | e.g. `1-3,5` | Episode numbers for `--scope specific` |
+| `--refresh` | flag | Re-scrape even when usable stored links exist |
 | `-v`, `--verbose` | flag | Show every scraping step (DEBUG); default shows milestones only |
 
 What-to-fetch menu (series): `Everything (episodes + zip)` · `All episodes` · `Specific episodes` · `Zip file only`. Movies skip the season/scope menus — just resolution. Only the chosen variant goes through the browser; results land in MySQL and Telegram as usual, and the final links print at the end.
+
+Stored links are validated before serving: each stored URL is checked live, dead ones are dropped (fully-dead titles are purged and re-scraped), and a request only reuses stored links matching its season / resolution / scope — otherwise it scrapes fresh. Pass `--refresh` to skip the check entirely.
+
+Every menu has a `Quit` row (or press `q`), and typing `q` + Enter mid-scrape stops gracefully after the current item.
 
 > **TTY note:** arrow menus need a real terminal. Under Docker use `docker compose run` (not `up`):
 > ```bash
 > docker compose run --rm scraper .venv/bin/python moviescraper.py search "last of us"
 > ```
-> Git Bash users: prefix with `winpty` if the menu doesn't render.
 
 ---
 
