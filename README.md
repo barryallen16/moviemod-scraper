@@ -4,10 +4,7 @@ A Python-based web scraper for extracting movie and series details, including do
 
 ![Interactive single-title run: search, pick season and resolution, get the final link](docs/cli-demo.png)
 
-
----
-
-![vlcsnap-2025-01-16-12h42m26s612](https://github.com/user-attachments/assets/c6a9e319-b6dd-44b7-a3cd-859c59888cab)
+--- 
 
 **Demo video sped up 4x.**
 - note: code is run on headfull mode for demostration. code in repo is in headless mode
